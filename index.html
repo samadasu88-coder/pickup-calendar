@@ -625,8 +625,9 @@ function judgeDay(d, meta) {
     if (ctx.isHoliday) rows.push({ kind: 'off', text: ctx.holidayName });
     if (!ctx.isSun) {
       if (d.papa === '休') rows.push({ kind: 'papa', text: 'パパ休み' });
-      if (d.tsu === '休')  rows.push({ kind: 'tsuu', text: 'つーちゃん休み' });
     }
+    // つーちゃん休みは日曜でも表示
+    if (d.tsu === '休') rows.push({ kind: 'tsuu', text: 'つーちゃん休み' });
     return rows;
   }
 
