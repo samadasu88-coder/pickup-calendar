@@ -1065,18 +1065,18 @@ async function cloudLoad() {
       return;
     }
     const data = JSON.parse(json.payload || '{}');
-    // 既存のoimukae-*キーを一度クリア → 受信データで上書き（古い月が消える）
-    const toRemove = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k && k.startsWith('oimukae-') && k !== holidaysCacheKey() && k !== gasUrlKey() && k !== gasTokenKey()) toRemove.push(k);
+    const keys = Object.keys(data);
+    if (keys.length === 0) {
+      status.className = 'gas-status error';
+      status.textContent = 'クラウドに保存データがありません（ローカルは保持）';
+      return;
     }
-    toRemove.forEach(k => localStorage.removeItem(k));
+    // mergeのみ。ローカルの既存キーは消さない（クラウドにある月だけ上書き）
     for (const [k, v] of Object.entries(data)) {
       if (v != null) localStorage.setItem(k, v);
     }
     status.className = 'gas-status success';
-    status.textContent = `読込完了 (${new Date(json.updated).toLocaleString('ja-JP')})。再表示します`;
+    status.textContent = `読込完了：${keys.length}件 (${new Date(json.updated).toLocaleString('ja-JP')})。再表示します`;
     // 現在月を読み直して再描画
     const savedYM = localStorage.getItem(configKey());
     if (savedYM) {
