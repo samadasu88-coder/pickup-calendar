@@ -1044,18 +1044,6 @@ function withBusy(btnId, busyLabel, fn) {
     .finally(() => { btn.disabled = false; btn.textContent = original; });
 }
 
-function collectLocalState() {
-  const out = {};
-  for (let i = 0; i < localStorage.length; i++) {
-    const k = localStorage.key(i);
-    if (!k) continue;
-    // 端末固有のキャッシュ（祝日キャッシュ、GAS URL/トークン）は除外
-    if (k === holidaysCacheKey() || k === gasUrlKey() || k === gasTokenKey()) continue;
-    if (k.startsWith('oimukae-')) out[k] = localStorage.getItem(k);
-  }
-  return out;
-}
-
 function postToGas(payload, statusMsg) {
   const status = document.getElementById('gasStatus');
   status.className = 'gas-status';
@@ -1074,14 +1062,19 @@ function postToGas(payload, statusMsg) {
   });
 }
 
+function currentYm() {
+  return `${state.year}-${String(state.month).padStart(2,'0')}`;
+}
+
 function cloudSave() {
   return withBusy('cloudSave', '保存中…', async () => {
-    showToast('info', 'クラウドへ保存中…');
+    const ym = currentYm();
+    showToast('info', `${state.year}年${state.month}月をクラウドへ保存中…`);
     try {
-      const data = collectLocalState();
-      const { res, json, text } = await postToGas({ action: 'sync-save', payload: JSON.stringify(data) }, '');
+      const payload = localStorage.getItem(stateKey(state.year, state.month)) || '';
+      const { res, json, text } = await postToGas({ action: 'sync-save', ym, payload }, '');
       if (res.ok && json && json.ok) {
-        showToast('success', `✓ クラウドに保存しました (${new Date(json.updated).toLocaleString('ja-JP')})`, 5000);
+        showToast('success', `✓ ${state.year}年${state.month}月をクラウドに保存しました (${new Date(json.updated).toLocaleString('ja-JP')})`, 5000);
       } else {
         showToast('error', '保存失敗: ' + (json && json.error ? json.error : text.slice(0, 200)));
       }
@@ -1092,33 +1085,23 @@ function cloudSave() {
 }
 
 function cloudLoad() {
-  if (!confirm('クラウドから最新データを取り込みます。同じ月のデータはクラウドの内容で上書きされます。よろしいですか？')) return Promise.resolve();
+  if (!confirm(`${state.year}年${state.month}月のデータをクラウドから取り込みます。現在この月に入力中の内容は上書きされます。よろしいですか？`)) return Promise.resolve();
   return withBusy('cloudLoad', '読込中…', async () => {
-    showToast('info', 'クラウドから読み込み中…');
+    const ym = currentYm();
+    showToast('info', `${state.year}年${state.month}月をクラウドから読み込み中…`);
     try {
-      const { res, json, text } = await postToGas({ action: 'sync-load' }, '');
+      const { res, json, text } = await postToGas({ action: 'sync-load', ym }, '');
       if (!(res.ok && json && json.ok)) {
         showToast('error', '読込失敗: ' + (json && json.error ? json.error : text.slice(0, 200)));
         return;
       }
-      const data = JSON.parse(json.payload || '{}');
-      const keys = Object.keys(data);
-      if (keys.length === 0) {
-        showToast('error', 'クラウドに保存データがありません（ローカルは保持）');
+      if (!json.payload) {
+        showToast('error', `クラウドに ${state.year}年${state.month}月のデータがありません（ローカルは保持）`);
         return;
       }
-      // mergeのみ
-      for (const [k, v] of Object.entries(data)) {
-        if (v != null) localStorage.setItem(k, v);
-      }
-      showToast('success', `✓ ${keys.length}件を読み込みました (${new Date(json.updated).toLocaleString('ja-JP')})`, 5000);
-      const savedYM = localStorage.getItem(configKey());
-      if (savedYM) {
-        const [yy, mm] = savedYM.split('-').map(Number);
-        await setYM(yy, mm);
-      } else {
-        renderAll();
-      }
+      localStorage.setItem(stateKey(state.year, state.month), json.payload);
+      showToast('success', `✓ ${state.year}年${state.month}月を読み込みました (${new Date(json.updated).toLocaleString('ja-JP')})`, 5000);
+      await setYM(state.year, state.month);
     } catch (e) {
       showToast('error', '通信エラー: ' + e.message);
     }

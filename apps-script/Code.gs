@@ -23,7 +23,7 @@ function doPost(e) {
     const action = body.action || 'register';
 
     if (action === 'sync-save') return handleSyncSave(body);
-    if (action === 'sync-load') return handleSyncLoad();
+    if (action === 'sync-load') return handleSyncLoad(body);
     return handleRegister(body);
   } catch (err) {
     return json({ ok: false, error: String(err) });
@@ -67,20 +67,25 @@ function handleRegister(body) {
 }
 
 function handleSyncSave(body) {
+  const ym = body.ym;
+  if (!ym) return json({ ok: false, error: 'ym required' });
   const props = PropertiesService.getScriptProperties();
-  props.setProperty('SYNC_DATA', body.payload || '{}');
+  props.setProperty('SYNC_' + ym, body.payload || '');
   const now = new Date().toISOString();
-  props.setProperty('SYNC_UPDATED', now);
-  return json({ ok: true, action: 'sync-save', updated: now });
+  props.setProperty('SYNC_UPDATED_' + ym, now);
+  return json({ ok: true, action: 'sync-save', ym, updated: now });
 }
 
-function handleSyncLoad() {
+function handleSyncLoad(body) {
+  const ym = body && body.ym;
+  if (!ym) return json({ ok: false, error: 'ym required' });
   const props = PropertiesService.getScriptProperties();
   return json({
     ok: true,
     action: 'sync-load',
-    payload: props.getProperty('SYNC_DATA') || '{}',
-    updated: props.getProperty('SYNC_UPDATED') || ''
+    ym,
+    payload: props.getProperty('SYNC_' + ym) || '',
+    updated: props.getProperty('SYNC_UPDATED_' + ym) || ''
   });
 }
 
