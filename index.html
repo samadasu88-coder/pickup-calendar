@@ -343,6 +343,22 @@
   .gas-status.success { color: #2e7d32; }
   .gas-status.error { color: #c62828; }
 
+  /* 操作バー直下の大きいトースト */
+  #toast {
+    display: none;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    padding: 8px 12px;
+    margin-bottom: 8px;
+    font-size: 13px;
+    font-weight: bold;
+  }
+  #toast.show { display: block; }
+  #toast.success { background: #e8f5e9; border-color: #2e7d32; color: #1b5e20; }
+  #toast.error   { background: #ffebee; border-color: #c62828; color: #b71c1c; }
+  #toast.info    { background: #e3f2fd; border-color: #2979ff; color: #0d47a1; }
+
   @media print {
     body { background: #fff; padding: 0; }
     .controls, .panel.input-panel, .gas-config { display: none; }
@@ -362,6 +378,8 @@
   <button id="cloudLoad">☁ 読込</button>
   <button id="syncCal" class="primary">Googleカレンダー登録</button>
 </div>
+
+<div id="toast"></div>
 
 <div class="panel input-panel">
   <h2>勤務入力（クリックで状態切替）</h2>
@@ -1006,6 +1024,25 @@ function buildEventsForGas() {
   return events;
 }
 
+function showToast(kind, message, autoHideMs) {
+  const t = document.getElementById('toast');
+  t.className = `show ${kind}`;
+  t.textContent = message;
+  if (autoHideMs) {
+    setTimeout(() => { t.className = ''; t.textContent = ''; }, autoHideMs);
+  }
+}
+
+function withBusy(btnId, busyLabel, fn) {
+  const btn = document.getElementById(btnId);
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = busyLabel;
+  return Promise.resolve()
+    .then(fn)
+    .finally(() => { btn.disabled = false; btn.textContent = original; });
+}
+
 function collectLocalState() {
   const out = {};
   for (let i = 0; i < localStorage.length; i++) {
@@ -1036,59 +1073,55 @@ function postToGas(payload, statusMsg) {
   });
 }
 
-async function cloudSave() {
-  const status = document.getElementById('gasStatus');
-  try {
-    const data = collectLocalState();
-    const { res, json, text } = await postToGas({ action: 'sync-save', payload: JSON.stringify(data) }, 'クラウドへ保存中…');
-    if (res.ok && json && json.ok) {
-      status.className = 'gas-status success';
-      status.textContent = `クラウド保存完了 (${new Date(json.updated).toLocaleString('ja-JP')})`;
-    } else {
-      status.className = 'gas-status error';
-      status.textContent = 'エラー: ' + (json && json.error ? json.error : text.slice(0, 200));
+function cloudSave() {
+  return withBusy('cloudSave', '保存中…', async () => {
+    showToast('info', 'クラウドへ保存中…');
+    try {
+      const data = collectLocalState();
+      const { res, json, text } = await postToGas({ action: 'sync-save', payload: JSON.stringify(data) }, '');
+      if (res.ok && json && json.ok) {
+        showToast('success', `✓ クラウドに保存しました (${new Date(json.updated).toLocaleString('ja-JP')})`, 5000);
+      } else {
+        showToast('error', '保存失敗: ' + (json && json.error ? json.error : text.slice(0, 200)));
+      }
+    } catch (e) {
+      showToast('error', '通信エラー: ' + e.message);
     }
-  } catch (e) {
-    status.className = 'gas-status error';
-    status.textContent = '通信エラー: ' + e.message;
-  }
+  });
 }
 
-async function cloudLoad() {
-  if (!confirm('クラウドから最新データを読み込み、この端末のデータを上書きします。よろしいですか？')) return;
-  const status = document.getElementById('gasStatus');
-  try {
-    const { res, json, text } = await postToGas({ action: 'sync-load' }, 'クラウドから読み込み中…');
-    if (!(res.ok && json && json.ok)) {
-      status.className = 'gas-status error';
-      status.textContent = 'エラー: ' + (json && json.error ? json.error : text.slice(0, 200));
-      return;
+function cloudLoad() {
+  if (!confirm('クラウドから最新データを取り込みます。同じ月のデータはクラウドの内容で上書きされます。よろしいですか？')) return Promise.resolve();
+  return withBusy('cloudLoad', '読込中…', async () => {
+    showToast('info', 'クラウドから読み込み中…');
+    try {
+      const { res, json, text } = await postToGas({ action: 'sync-load' }, '');
+      if (!(res.ok && json && json.ok)) {
+        showToast('error', '読込失敗: ' + (json && json.error ? json.error : text.slice(0, 200)));
+        return;
+      }
+      const data = JSON.parse(json.payload || '{}');
+      const keys = Object.keys(data);
+      if (keys.length === 0) {
+        showToast('error', 'クラウドに保存データがありません（ローカルは保持）');
+        return;
+      }
+      // mergeのみ
+      for (const [k, v] of Object.entries(data)) {
+        if (v != null) localStorage.setItem(k, v);
+      }
+      showToast('success', `✓ ${keys.length}件を読み込みました (${new Date(json.updated).toLocaleString('ja-JP')})`, 5000);
+      const savedYM = localStorage.getItem(configKey());
+      if (savedYM) {
+        const [yy, mm] = savedYM.split('-').map(Number);
+        await setYM(yy, mm);
+      } else {
+        renderAll();
+      }
+    } catch (e) {
+      showToast('error', '通信エラー: ' + e.message);
     }
-    const data = JSON.parse(json.payload || '{}');
-    const keys = Object.keys(data);
-    if (keys.length === 0) {
-      status.className = 'gas-status error';
-      status.textContent = 'クラウドに保存データがありません（ローカルは保持）';
-      return;
-    }
-    // mergeのみ。ローカルの既存キーは消さない（クラウドにある月だけ上書き）
-    for (const [k, v] of Object.entries(data)) {
-      if (v != null) localStorage.setItem(k, v);
-    }
-    status.className = 'gas-status success';
-    status.textContent = `読込完了：${keys.length}件 (${new Date(json.updated).toLocaleString('ja-JP')})。再表示します`;
-    // 現在月を読み直して再描画
-    const savedYM = localStorage.getItem(configKey());
-    if (savedYM) {
-      const [yy, mm] = savedYM.split('-').map(Number);
-      await setYM(yy, mm);
-    } else {
-      renderAll();
-    }
-  } catch (e) {
-    status.className = 'gas-status error';
-    status.textContent = '通信エラー: ' + e.message;
-  }
+  });
 }
 
 async function syncToGoogleCalendar() {
