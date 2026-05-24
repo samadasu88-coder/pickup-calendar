@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>お迎え予定表 2026年4月</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-serif;
+    background: #f5f5f5;
+    padding: 8px;
+    font-size: 13px;
+    color: #333;
+  }
+  h1 {
+    text-align: center;
+    font-size: 20px;
+    margin: 8px 0 4px;
+  }
+  .legend {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+    font-size: 11px;
+  }
+  .legend span {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+  }
+  .legend .dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+  .cal-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 2px;
+    margin-bottom: 12px;
+  }
+  .dow {
+    text-align: center;
+    font-weight: bold;
+    font-size: 11px;
+    padding: 4px 0;
+    background: #666;
+    color: #fff;
+    border-radius: 3px;
+  }
+  .dow.sat { background: #2979ff; }
+  .dow.sun { background: #e53935; }
+  .day-cell {
+    background: #fff;
+    border-radius: 4px;
+    padding: 3px;
+    min-height: 80px;
+    border: 1px solid #ddd;
+    position: relative;
+  }
+  .day-cell.weekend { background: #f0f0f0; }
+  .day-cell.holiday { background: #fff0f0; }
+  .day-cell.empty { background: transparent; border: none; }
+  .day-num {
+    font-weight: bold;
+    font-size: 13px;
+    margin-bottom: 2px;
+  }
+  .day-num.sat { color: #2979ff; }
+  .day-num.sun, .day-num.holiday { color: #e53935; }
+  .row-item {
+    font-size: 10px;
+    line-height: 1.4;
+    padding: 1px 3px;
+    border-radius: 2px;
+    margin-bottom: 1px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .bg-papa { background: #bbdefb; }
+  .bg-mama { background: #f8bbd0; }
+  .bg-tsuu { background: #c8e6c9; }
+  .bg-jiiji { background: #ffe0b2; }
+  .bg-off { background: #e0e0e0; color: #888; }
+  .bg-none { background: #f5f5f5; color: #aaa; }
+  .label {
+    font-weight: bold;
+    font-size: 9px;
+    color: #666;
+  }
+
+  /* 施設利用サマリー */
+  .summary {
+    background: #fff;
+    border-radius: 6px;
+    padding: 12px;
+    margin-top: 12px;
+    border: 1px solid #ddd;
+  }
+  .summary h2 {
+    font-size: 16px;
+    margin-bottom: 8px;
+    border-bottom: 2px solid #333;
+    padding-bottom: 4px;
+  }
+  .summary h3 {
+    font-size: 14px;
+    margin: 10px 0 4px;
+    color: #555;
+  }
+  .summary table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    margin-bottom: 8px;
+  }
+  .summary th, .summary td {
+    border: 1px solid #ccc;
+    padding: 4px 6px;
+    text-align: center;
+  }
+  .summary th {
+    background: #eee;
+    font-weight: bold;
+  }
+  .summary td.use { background: #fff9c4; }
+</style>
+</head>
+<body>
+
+<h1>お迎え予定表 2026年4月</h1>
+
+<div class="legend">
+  <span><span class="dot" style="background:#bbdefb"></span>パパ</span>
+  <span><span class="dot" style="background:#f8bbd0"></span>ママ</span>
+  <span><span class="dot" style="background:#c8e6c9"></span>つー</span>
+  <span><span class="dot" style="background:#ffe0b2"></span>じいじ</span>
+  <span><span class="dot" style="background:#e0e0e0"></span>お休み</span>
+</div>
+
+<div class="cal-grid">
+  <!-- 曜日ヘッダー -->
+  <div class="dow">月</div>
+  <div class="dow">火</div>
+  <div class="dow">水</div>
+  <div class="dow">木</div>
+  <div class="dow">金</div>
+  <div class="dow sat">土</div>
+  <div class="dow sun">日</div>
+
+  <!-- Week 1: 4/1(水) は水曜 → 前に月火の空セル -->
+  <div class="day-cell empty"></div>
+  <div class="day-cell empty"></div>
+
+  <!-- 4/1 (水) じいじだけ休み パパ遅番 -->
+  <div class="day-cell">
+    <div class="day-num">1</div>
+    <div class="row-item bg-mama">朝キッズ 朝どん</div>
+    <div class="row-item bg-mama">キッズ18:00 ママ</div>
+    <div class="row-item bg-papa">どん18:30 パパ</div>
+  </div>
+
+  <!-- 4/2 (木) ママ休み -->
+  <div class="day-cell">
+    <div class="day-num">2</div>
+    <div class="row-item bg-mama">ママ休み</div>
+  </div>
+
+  <!-- 4/3 (金) パパ休み -->
+  <div class="day-cell">
+    <div class="day-num">3</div>
+    <div class="row-item bg-papa">パパ休み</div>
+  </div>
+
+  <!-- 4/4 (土) -->
+  <div class="day-cell weekend">
+    <div class="day-num sat">4</div>
+  </div>
+
+  <!-- 4/5 (日) -->
+  <div class="day-cell weekend">
+    <div class="day-num sun">5</div>
+  </div>
+
+  <!-- Week 2 -->
+  <!-- 4/6 (月) 全員仕事・学校なし・パパ早１ -->
+  <div class="day-cell">
+    <div class="day-num">6</div>
+    <div class="row-item bg-mama">朝キッズ 朝どん</div>
+    <div class="row-item bg-papa">キッズ17:00 パパ</div>
+    <div class="row-item bg-papa">どん17:30 パパ</div>
+  </div>
+
+  <!-- 4/7 (火) パパ休み ママ休み 入学式 -->
+  <div class="day-cell">
+    <div class="day-num">7</div>
+    <div class="row-item bg-papa">パパ休み</div>
+    <div class="row-item bg-mama">ママ休み</div>
+    <div class="row-item" style="background:#fff9c4;font-size:9px">入学式</div>
+  </div>
+
+  <!-- 4/8 (水) ママ休み 幼稚園開始 -->
+  <div class="day-cell">
+    <div class="day-num">8</div>
+    <div class="row-item bg-mama">ママ休み</div>
+  </div>
+
+  <!-- 4/9 (木) パパ休み 幼稚園休み -->
+  <div class="day-cell">
+    <div class="day-num">9</div>
+    <div class="row-item bg-papa">パパ休み</div>
+    <div class="row-item bg-none">幼:園休み</div>
+  </div>
+
+  <!-- 4/10 (金) ママ休み -->
+  <div class="day-cell">
+    <div class="day-num">10</div>
+    <div class="row-item bg-mama">ママ休み</div>
+  </div>
+
+  <!-- 4/11 (土) -->
+  <div class="day-cell weekend">
+    <div class="day-num sat">11</div>
+  </div>
+
+  <!-- 4/12 (日) -->
+  <div class="day-cell weekend">
+    <div class="day-num sun">12</div>
+  </div>
+
+  <!-- Week 3 -->
+  <!-- 4/13 (月) パパ休み -->
+  <div class="day-cell">
+    <div class="day-num">13</div>
+    <div class="row-item bg-papa">パパ休み</div>
+  </div>
+
+  <!-- 4/14 (火) つー休み -->
+  <div class="day-cell">
+    <div class="day-num">14</div>
+    <div class="row-item bg-tsuu">つー休み</div>
+  </div>
+
+  <!-- 4/15 (水) じいじだけ休み パパ遅番 -->
+  <div class="day-cell">
+    <div class="day-num">15</div>
+    <div class="row-item bg-mama">朝どん</div>
+    <div class="row-item bg-papa">どん18:30 パパ</div>
+  </div>
+
+  <!-- 4/16 (木) パパ休み ママ休み -->
+  <div class="day-cell">
+    <div class="day-num">16</div>
+    <div class="row-item bg-papa">パパ休み</div>
+    <div class="row-item bg-mama">ママ休み</div>
+  </div>
+
+  <!-- 4/17 (金) ママ休み -->
+  <div class="day-cell">
+    <div class="day-num">17</div>
+    <div class="row-item bg-mama">ママ休み</div>
+  </div>
+
+  <!-- 4/18 (土) -->
+  <div class="day-cell weekend">
+    <div class="day-num sat">18</div>
+  </div>
+
+  <!-- 4/19 (日) -->
+  <div class="day-cell weekend">
+    <div class="day-num sun">19</div>
+  </div>
+
+  <!-- Week 4 -->
+  <!-- 4/20 (月) 全員仕事 パパ遅番 -->
+  <div class="day-cell">
+    <div class="day-num">20</div>
+    <div class="row-item bg-mama">朝どん</div>
+    <div class="row-item bg-mama">キッズ18:00 ママ</div>
+    <div class="row-item bg-papa">どん18:30 パパ</div>
+  </div>
+
+  <!-- 4/21 (火) じいじだけ休み パパ遅番 -->
+  <div class="day-cell">
+    <div class="day-num">21</div>
+    <div class="row-item bg-mama">朝どん</div>
+    <div class="row-item bg-papa">どん18:30 パパ</div>
+  </div>
+
+  <!-- 4/22 (水) じいじだけ休み パパ遅番 -->
+  <div class="day-cell">
+    <div class="day-num">22</div>
+    <div class="row-item bg-mama">朝どん</div>
+    <div class="row-item bg-papa">どん18:30 パパ</div>
+  </div>
+
+  <!-- 4/23 (木) パパ休み ママ休み -->
+  <div class="day-cell">
+    <div class="day-num">23</div>
+    <div class="row-item bg-papa">パパ休み</div>
+    <div class="row-item bg-mama">ママ休み</div>
+  </div>
+
+  <!-- 4/24 (金) ママ休み -->
+  <div class="day-cell">
+    <div class="day-num">24</div>
+    <div class="row-item bg-mama">ママ休み</div>
+  </div>
+
+  <!-- 4/25 (土) -->
+  <div class="day-cell weekend">
+    <div class="day-num sat">25</div>
+  </div>
+
+  <!-- 4/26 (日) -->
+  <div class="day-cell weekend">
+    <div class="day-num sun">26</div>
+  </div>
+
+  <!-- Week 5 -->
+  <!-- 4/27 (月) 全員仕事 パパ早１ -->
+  <div class="day-cell">
+    <div class="day-num">27</div>
+    <div class="row-item bg-mama">朝どん</div>
+    <div class="row-item bg-papa">キッズ17:00 パパ</div>
+    <div class="row-item bg-papa">どん17:30 パパ</div>
+  </div>
+
+  <!-- 4/28 (火) じいじだけ休み パパ遅番 -->
+  <div class="day-cell">
+    <div class="day-num">28</div>
+    <div class="row-item bg-mama">朝どん</div>
+    <div class="row-item bg-papa">どん18:30 パパ</div>
+  </div>
+
+  <!-- 4/29 (水) 祝日 -->
+  <div class="day-cell holiday">
+    <div class="day-num holiday">29</div>
+    <div class="row-item bg-off">昭和の日</div>
+  </div>
+
+  <!-- 4/30 (木) つー休み -->
+  <div class="day-cell">
+    <div class="day-num">30</div>
+    <div class="row-item bg-tsuu">つー休み</div>
+  </div>
+
+  <div class="day-cell empty"></div>
+  <div class="day-cell empty"></div>
+</div>
+
+<!-- 施設利用サマリー -->
+<div class="summary">
+  <h2>施設利用まとめ</h2>
+
+  <h3>キッズクラブ</h3>
+  <table>
+    <tr><th>日付</th><th>朝</th><th>お迎え</th></tr>
+    <tr><td>4/1 (水)</td><td class="use">朝キッズ</td><td class="use">18:00 ママ</td></tr>
+    <tr><td>4/6 (月)</td><td class="use">朝キッズ</td><td class="use">17:00 パパ</td></tr>
+    <tr><td>4/20 (月)</td><td>-</td><td class="use">18:00 ママ</td></tr>
+    <tr><td>4/27 (月)</td><td>-</td><td class="use">17:00 パパ</td></tr>
+  </table>
+
+  <h3>どんぐり</h3>
+  <table>
+    <tr><th>日付</th><th>朝</th><th>お迎え</th></tr>
+    <tr><td>4/1 (水)</td><td class="use">朝どん</td><td class="use">18:30 パパ</td></tr>
+    <tr><td>4/6 (月)</td><td class="use">朝どん</td><td class="use">17:30 パパ</td></tr>
+    <tr><td>4/15 (水)</td><td class="use">朝どん</td><td class="use">18:30 パパ</td></tr>
+    <tr><td>4/20 (月)</td><td class="use">朝どん</td><td class="use">18:30 パパ</td></tr>
+    <tr><td>4/21 (火)</td><td class="use">朝どん</td><td class="use">18:30 パパ</td></tr>
+    <tr><td>4/22 (水)</td><td class="use">朝どん</td><td class="use">18:30 パパ</td></tr>
+    <tr><td>4/27 (月)</td><td class="use">朝どん</td><td class="use">17:30 パパ</td></tr>
+    <tr><td>4/28 (火)</td><td class="use">朝どん</td><td class="use">18:30 パパ</td></tr>
+  </table>
+</div>
+
+<div class="summary" style="margin-top:8px">
+  <h2>凡例</h2>
+  <table>
+    <tr><th>表記</th><th>意味</th></tr>
+    <tr><td>朝キッズ</td><td>朝キッズクラブに預ける</td></tr>
+    <tr><td>朝どん</td><td>朝どんぐり（延長保育）に預ける</td></tr>
+    <tr><td>バス</td><td>幼稚園バス利用</td></tr>
+    <tr><td>キッズ / どん</td><td>お迎え（担当者＋時間）</td></tr>
+  </table>
+</div>
+
+</body>
+</html>

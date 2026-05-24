@@ -1,0 +1,1128 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>お迎え予定表</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-serif;
+    background: #f5f5f5;
+    padding: 8px 4px 40px;
+    font-size: 13px;
+    color: #333;
+  }
+
+  /* 操作バー */
+  .controls {
+    background: #fff;
+    border-radius: 6px;
+    padding: 8px;
+    margin-bottom: 8px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+    border: 1px solid #ddd;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .controls input[type="month"] {
+    font-size: 14px;
+    padding: 4px 6px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+  }
+  .controls button {
+    font-size: 13px;
+    padding: 5px 10px;
+    border: 1px solid #888;
+    background: #fafafa;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  .controls button:hover { background: #eee; }
+  .controls .danger { border-color: #c00; color: #c00; }
+  .controls .primary { background: #2979ff; color: #fff; border-color: #2979ff; }
+
+  /* パネル */
+  .panel {
+    background: #fff;
+    border-radius: 6px;
+    padding: 10px;
+    margin-bottom: 10px;
+    border: 1px solid #ddd;
+  }
+  .panel h2 {
+    font-size: 14px;
+    margin-bottom: 8px;
+    border-bottom: 2px solid #333;
+    padding-bottom: 4px;
+  }
+
+  /* メタ入力（コンパクト横並び） */
+  .meta-inputs {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+  .meta-inputs label {
+    display: flex;
+    flex-direction: column;
+    font-size: 11px;
+    color: #555;
+  }
+  .meta-inputs input {
+    font-size: 13px;
+    padding: 4px 6px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    margin-top: 2px;
+  }
+
+  /* 入力グリッド */
+  .grid-scroll {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin-top: 6px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+  }
+  table.grid-input {
+    border-collapse: collapse;
+    table-layout: fixed;
+    width: max-content;
+    min-width: 100%;
+    font-size: 12px;
+    user-select: none;
+  }
+  table.grid-input th, table.grid-input td {
+    border: 1px solid #ddd;
+    text-align: center;
+    vertical-align: middle;
+    padding: 0;
+  }
+  table.grid-input thead th {
+    background: #f5f5f5;
+    font-size: 11px;
+    padding: 3px 0 2px;
+    line-height: 1.2;
+    min-width: 32px;
+    max-width: 32px;
+    width: 32px;
+  }
+  table.grid-input thead th.day-h .dnum {
+    font-size: 13px;
+    font-weight: bold;
+    display: block;
+  }
+  table.grid-input thead th.day-h .ddow {
+    font-size: 10px;
+    color: #777;
+    display: block;
+  }
+  table.grid-input thead th.day-h.sat { background: #e3f2fd; }
+  table.grid-input thead th.day-h.sat .dnum { color: #2979ff; }
+  table.grid-input thead th.day-h.sun { background: #ffebee; }
+  table.grid-input thead th.day-h.sun .dnum { color: #e53935; }
+  table.grid-input thead th.day-h.hol { background: #ffebee; }
+  table.grid-input thead th.day-h.hol .dnum { color: #e53935; }
+  table.grid-input thead th.day-h .hname {
+    font-size: 9px;
+    color: #e53935;
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  table.grid-input th.row-label {
+    background: #fafafa;
+    font-weight: bold;
+    font-size: 12px;
+    padding: 0 6px;
+    min-width: 70px;
+    max-width: 70px;
+    width: 70px;
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    text-align: left;
+  }
+  table.grid-input thead th.row-label {
+    z-index: 3;
+  }
+  table.grid-input tbody td {
+    height: 34px;
+    cursor: pointer;
+    background: #fff;
+    font-weight: bold;
+    font-size: 13px;
+    transition: background 0.08s;
+  }
+  table.grid-input tbody td:hover { filter: brightness(0.95); }
+  table.grid-input tbody td.weekend { background: #fafafa; }
+  table.grid-input tbody td.hol { background: #fff5f5; }
+
+  /* セル色（weekend/holより特異性を上げる） */
+  table.grid-input tbody td.papa-haya   { background: #bbdefb; color: #0d47a1; }
+  table.grid-input tbody td.papa-oso    { background: #1976d2; color: #fff; }
+  table.grid-input tbody td.papa-yasumi { background: #e0e0e0; color: #555; }
+  table.grid-input tbody td.mama-shukkin { background: #f8bbd0; color: #880e4f; }
+  table.grid-input tbody td.mama-yasumi  { background: #e0e0e0; color: #555; }
+  table.grid-input tbody td.tsu-yasumi   { background: #c8e6c9; color: #1b5e20; }
+  table.grid-input tbody td.jiiji-yasumi { background: #ffe0b2; color: #e65100; }
+  table.grid-input tbody td.jiiji-auto   { background: #fff3e0; color: #bf360c; opacity: 0.85; cursor: not-allowed; }
+
+  table.grid-input tbody td.locked { cursor: not-allowed; opacity: 0.85; }
+
+  /* 結果カレンダー */
+  h1.result-title {
+    text-align: center;
+    font-size: 18px;
+    margin: 10px 0 6px;
+  }
+  .legend {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+    font-size: 11px;
+  }
+  .legend span { display: flex; align-items: center; gap: 3px; }
+  .legend .dot {
+    width: 11px; height: 11px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+  .cal-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 1px;
+    margin-bottom: 8px;
+  }
+  .dow {
+    text-align: center;
+    font-weight: bold;
+    font-size: 11px;
+    padding: 3px 0;
+    background: #666;
+    color: #fff;
+    border-radius: 2px;
+  }
+  .dow.sat { background: #2979ff; }
+  .dow.sun { background: #e53935; }
+  .day-cell {
+    background: #fff;
+    border-radius: 3px;
+    padding: 2px;
+    min-height: 78px;
+    border: 1px solid #ddd;
+    position: relative;
+    overflow: hidden;
+  }
+  .day-cell.weekend { background: #f0f0f0; }
+  .day-cell.holiday { background: #fff0f0; }
+  .day-cell.empty { background: transparent; border: none; }
+  .day-num {
+    font-weight: bold;
+    font-size: 12px;
+    margin-bottom: 2px;
+    line-height: 1.1;
+  }
+  .day-num.sat { color: #2979ff; }
+  .day-num.sun, .day-num.holiday { color: #e53935; }
+  .row-item {
+    font-size: 9.5px;
+    line-height: 1.3;
+    padding: 1px 2px;
+    border-radius: 2px;
+    margin-bottom: 1px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .bg-papa { background: #bbdefb; }
+  .bg-mama { background: #f8bbd0; }
+  .bg-tsuu { background: #c8e6c9; }
+  .bg-jiiji { background: #ffe0b2; }
+  .bg-off { background: #e0e0e0; color: #888; }
+  .badge-mark {
+    font-size: 9px;
+    line-height: 1.3;
+    padding: 1px 3px;
+    border-radius: 2px;
+    margin-bottom: 1px;
+    background: #eceff1;
+    color: #607d8b;
+    border: 1px dashed #b0bec5;
+  }
+  .clear-btn {
+    padding: 2px 6px;
+    margin-left: 4px;
+    font-size: 10px;
+    border: 1px solid #ccc;
+    background: #fff;
+    border-radius: 3px;
+    cursor: pointer;
+    color: #888;
+  }
+  .clear-btn:hover { background: #f5f5f5; color: #333; }
+
+  .summary {
+    background: #fff;
+    border-radius: 5px;
+    padding: 8px 6px;
+    margin-top: 8px;
+    border: 1px solid #ddd;
+  }
+  .summary h2 {
+    font-size: 15px;
+    margin-bottom: 6px;
+    border-bottom: 2px solid #333;
+    padding-bottom: 3px;
+  }
+  .summary h3 {
+    font-size: 13px;
+    margin: 8px 0 4px;
+    color: #555;
+  }
+  .summary table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    margin-bottom: 6px;
+    table-layout: fixed;
+  }
+  .summary th, .summary td {
+    border: 1px solid #ccc;
+    padding: 3px 4px;
+    text-align: center;
+    word-break: break-all;
+  }
+  .summary th { background: #eee; font-weight: bold; }
+  .summary td.use { background: #fff9c4; }
+  .summary .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .summary .empty-msg {
+    color: #999;
+    font-size: 12px;
+    padding: 4px;
+  }
+
+  /* Apps Script設定 */
+  .gas-config {
+    background: #fff;
+    border-radius: 6px;
+    padding: 8px;
+    margin-top: 10px;
+    border: 1px solid #ddd;
+    font-size: 11px;
+  }
+  .gas-config label { display: flex; flex-direction: column; }
+  .gas-config input {
+    font-size: 12px;
+    padding: 4px 6px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    margin-top: 2px;
+  }
+  .gas-status {
+    margin-top: 6px;
+    font-size: 11px;
+    color: #555;
+    min-height: 14px;
+  }
+  .gas-status.success { color: #2e7d32; }
+  .gas-status.error { color: #c62828; }
+
+  @media print {
+    body { background: #fff; padding: 0; }
+    .controls, .panel.input-panel, .gas-config { display: none; }
+    .panel { border: none; padding: 0; }
+  }
+</style>
+</head>
+<body>
+
+<div class="controls">
+  <input type="month" id="ym">
+  <button id="prevMonth">＜</button>
+  <button id="nextMonth">＞</button>
+  <button id="print">印刷</button>
+  <button id="reset" class="danger">リセット</button>
+  <button id="syncCal" class="primary">Googleカレンダー登録</button>
+</div>
+
+<div class="panel input-panel">
+  <h2>勤務入力（クリックで状態切替）</h2>
+  <div class="meta-inputs">
+    <label>祝日（自動取得・編集可）
+      <div style="display:flex; gap:4px; margin-top:2px">
+        <input type="text" id="holidaysCsv" placeholder="例: 3=憲法記念日, 4=みどりの日" style="flex:1; margin-top:0">
+        <button type="button" id="fetchHolidays" style="padding:4px 8px; font-size:11px; border:1px solid #888; background:#fafafa; border-radius:4px; cursor:pointer">再取得</button>
+      </div>
+    </label>
+    <label>学校なし日（春休み等・カンマ区切り）
+      <div style="display:flex; gap:4px; margin-top:2px">
+        <input type="text" id="schoolOffDays" placeholder="例: 1,2,3" style="flex:1; margin-top:0">
+        <button type="button" class="clear-btn" data-clear="schoolOffDays">クリア</button>
+      </div>
+    </label>
+    <label>園休み日（カンマ区切り）
+      <div style="display:flex; gap:4px; margin-top:2px">
+        <input type="text" id="kindyOffDays" placeholder="例: 9" style="flex:1; margin-top:0">
+        <button type="button" class="clear-btn" data-clear="kindyOffDays">クリア</button>
+      </div>
+    </label>
+  </div>
+  <div class="grid-scroll">
+    <table class="grid-input">
+      <thead>
+        <tr id="headRow"></tr>
+      </thead>
+      <tbody id="gridBody"></tbody>
+    </table>
+  </div>
+  <div style="margin-top:6px; font-size:11px; color:#666">
+    パパ：<b style="background:#bbdefb;padding:0 4px">早</b>→<b style="background:#1976d2;color:#fff;padding:0 4px">遅</b>→<b style="background:#e0e0e0;padding:0 4px">休</b>　／
+    ママ：<b style="background:#f8bbd0;padding:0 4px">出</b>→<b style="background:#e0e0e0;padding:0 4px">休</b>（土日祝は休固定）　／
+    つーちゃん：空→<b style="background:#c8e6c9;padding:0 4px">休</b>　／
+    じいじ：火水は自動休（薄色）、他曜日は空→<b style="background:#ffe0b2;padding:0 4px">休</b>
+  </div>
+</div>
+
+<div id="output"></div>
+
+<div class="gas-config">
+  <div class="gas-status" id="gasStatus"></div>
+  <details style="margin-top:6px">
+    <summary style="cursor:pointer; color:#888">詳細設定（通常は触らない）</summary>
+    <label style="margin-top:6px">Apps Script Web App URL
+      <input type="text" id="gasUrl">
+    </label>
+    <label style="margin-top:6px">共有トークン
+      <input type="text" id="gasToken" placeholder="未設定">
+    </label>
+  </details>
+</div>
+
+<script>
+'use strict';
+
+// ===== 定数 =====
+const DOW_NAMES = ['日', '月', '火', '水', '木', '金', '土'];
+const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbymicCeJe1fibRWb3IPIVCYmC1LmQgJqMXPPdsj0Prp-Ei2SULrVMkn2bdftvsFX2ZoPw/exec';
+const DEFAULT_GAS_TOKEN = '';
+const PAPA_CYCLE = ['早', '遅', '休'];
+const MAMA_CYCLE = ['出', '休'];
+const TSU_CYCLE  = ['', '休'];
+const JIIJI_CYCLE = ['', '休']; // 火水以外で使う
+
+// 値 → CSSクラス（日本語クラス名は環境依存があるため英字に）
+const CLS = {
+  papa:  { '早': 'papa-haya',   '遅': 'papa-oso',    '休': 'papa-yasumi' },
+  mama:  { '出': 'mama-shukkin','休': 'mama-yasumi' },
+  tsu:   { '休': 'tsu-yasumi' },
+  jiiji: { '休': 'jiiji-yasumi' }
+};
+
+// ===== 状態 =====
+let state = null;
+
+// ===== ユーティリティ =====
+function daysInMonth(y, m) { return new Date(y, m, 0).getDate(); }
+function parseCsvNums(str) {
+  if (!str) return [];
+  return str.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n));
+}
+function parseHolidaysCsv(str) {
+  // "3=憲法記念日, 4=みどりの日" → { 3: '憲法記念日', 4: 'みどりの日' }
+  const out = {};
+  if (!str) return out;
+  for (const part of str.split(',')) {
+    const m = part.trim().match(/^(\d+)\s*=\s*(.+)$/);
+    if (m) out[parseInt(m[1], 10)] = m[2].trim();
+  }
+  return out;
+}
+function stateKey(y, m) { return `oimukae-${y}-${String(m).padStart(2,'0')}`; }
+function gasUrlKey()   { return 'oimukae-gas-url'; }
+function gasTokenKey() { return 'oimukae-gas-token'; }
+function configKey()   { return 'oimukae-current-ym'; }
+function holidaysCacheKey() { return 'oimukae-jp-holidays-v1'; }
+
+// ===== 祝日自動取得（holidays-jp） =====
+async function fetchJpHolidaysAll(forceRefresh = false) {
+  if (!forceRefresh) {
+    const cached = localStorage.getItem(holidaysCacheKey());
+    if (cached) {
+      try {
+        const obj = JSON.parse(cached);
+        // 24時間以内のキャッシュは再利用
+        if (obj.ts && Date.now() - obj.ts < 24 * 3600 * 1000) return obj.data;
+      } catch (e) {}
+    }
+  }
+  try {
+    const res = await fetch('https://holidays-jp.github.io/api/v1/date.json');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    localStorage.setItem(holidaysCacheKey(), JSON.stringify({ ts: Date.now(), data }));
+    return data;
+  } catch (e) {
+    console.warn('祝日取得失敗', e);
+    // 失敗時はキャッシュがあれば使う
+    const cached = localStorage.getItem(holidaysCacheKey());
+    if (cached) {
+      try { return JSON.parse(cached).data; } catch (_) {}
+    }
+    return null;
+  }
+}
+
+function extractMonthHolidays(allHolidays, y, m) {
+  // allHolidays: { "YYYY-MM-DD": "名称", ... }
+  const entries = [];
+  for (const [date, name] of Object.entries(allHolidays || {})) {
+    const [hy, hm, hd] = date.split('-').map(Number);
+    if (hy === y && hm === m) entries.push([hd, name]);
+  }
+  entries.sort((a, b) => a[0] - b[0]);
+  return entries.map(([d, n]) => `${d}=${n}`).join(', ');
+}
+
+async function autoFillHolidaysIfEmpty() {
+  if (state.holidaysCsv && state.holidaysCsv.trim()) return false;
+  const all = await fetchJpHolidaysAll();
+  if (!all) return false;
+  const csv = extractMonthHolidays(all, state.year, state.month);
+  if (csv) {
+    state.holidaysCsv = csv;
+    saveState();
+    return true;
+  }
+  return false;
+}
+
+async function refetchHolidaysForce() {
+  const all = await fetchJpHolidaysAll(true);
+  if (!all) {
+    alert('祝日の取得に失敗しました（ネットワーク接続を確認してください）');
+    return;
+  }
+  const csv = extractMonthHolidays(all, state.year, state.month);
+  state.holidaysCsv = csv;
+  saveState();
+  renderAll();
+}
+
+function emptyState(y, m) {
+  const n = daysInMonth(y, m);
+  const days = [];
+  for (let d = 1; d <= n; d++) {
+    const dt = new Date(y, m - 1, d);
+    days.push({
+      day: d,
+      dow: dt.getDay(),
+      papa: '休',
+      mama: '休',
+      tsu: '',        // '' or '休'
+      jiijiExtra: ''  // '' or '休'（火水以外のみ意味あり）
+    });
+  }
+  return {
+    year: y,
+    month: m,
+    days,
+    holidaysCsv: '',
+    schoolOffDays: '',
+    kindyOffDays: ''
+  };
+}
+
+function loadState(y, m) {
+  try {
+    const raw = localStorage.getItem(stateKey(y, m));
+    if (raw) {
+      const s = JSON.parse(raw);
+      if (s.days && s.days.length === daysInMonth(y, m)) {
+        // 旧スキーマ互換（tsuOff, jiijiExtraOff, holidayName）
+        s.days.forEach(d => {
+          if (d.tsuOff !== undefined) { d.tsu = d.tsuOff ? '休' : ''; delete d.tsuOff; }
+          if (d.tsu === undefined) d.tsu = '';
+          if (d.jiijiExtra === undefined) d.jiijiExtra = '';
+          // 旧版は '' 状態を許容していた。新版はパパ／ママは空なし → 「休」に寄せる
+          if (!d.papa) d.papa = '休';
+          if (!d.mama) d.mama = '休';
+          if (d.holidayName) {
+            // 旧版の holidayName を holidaysCsv へ吸い上げ
+            const existing = parseHolidaysCsv(s.holidaysCsv || '');
+            existing[d.day] = d.holidayName;
+            s.holidaysCsv = Object.entries(existing).map(([k,v]) => `${k}=${v}`).join(', ');
+            delete d.holidayName;
+          }
+        });
+        if (s.holidaysCsv === undefined) s.holidaysCsv = '';
+        if (s.schoolOffDays === undefined) s.schoolOffDays = '';
+        if (s.kindyOffDays === undefined)  s.kindyOffDays = '';
+        return s;
+      }
+    }
+  } catch (e) {}
+  return emptyState(y, m);
+}
+
+function saveState() {
+  localStorage.setItem(stateKey(state.year, state.month), JSON.stringify(state));
+  localStorage.setItem(configKey(), `${state.year}-${String(state.month).padStart(2,'0')}`);
+}
+
+// ===== 派生：日ごとのコンテキスト（祝日反映後） =====
+function getDayCtx(d) {
+  const holidays = parseHolidaysCsv(state.holidaysCsv);
+  const holidayName = holidays[d.day] || '';
+  const isSat = d.dow === 6;
+  const isSun = d.dow === 0;
+  const isHoliday = !!holidayName;
+  const isWeekendOrHoliday = isSat || isSun || isHoliday;
+  return { holidayName, isSat, isSun, isHoliday, isWeekendOrHoliday };
+}
+
+// ===== 判定エンジン =====
+function judgeDay(d, meta) {
+  const ctx = getDayCtx(d);
+  const rows = [];
+
+  if (ctx.isWeekendOrHoliday) {
+    if (ctx.isHoliday) rows.push({ kind: 'off', text: ctx.holidayName });
+    if (!ctx.isSun) {
+      if (d.papa === '休') rows.push({ kind: 'papa', text: 'パパ休み' });
+      if (d.tsu === '休')  rows.push({ kind: 'tsuu', text: 'つーちゃん休み' });
+    }
+    return rows;
+  }
+
+  // 平日
+  // ママは祝日でなくとも入力ない場合は'休'扱いとはしない（空欄=未入力）
+  // 判定は実入力に従う
+  const papaOff = d.papa === '休';
+  const mamaOff = d.mama === '休';
+  const tsuOff  = d.tsu  === '休';
+
+  if (papaOff || mamaOff || tsuOff) {
+    if (papaOff) rows.push({ kind: 'papa', text: 'パパ休み' });
+    if (mamaOff) rows.push({ kind: 'mama', text: 'ママ休み' });
+    if (tsuOff)  rows.push({ kind: 'tsuu', text: 'つーちゃん休み' });
+    return rows;
+  }
+
+  const jiijiOff   = isJiijiOff(d);
+  const schoolOpen = !meta.schoolOffDays.includes(d.day);
+
+  if (jiijiOff && schoolOpen) {
+    rows.push({ kind: 'mama', text: '朝どん' });
+    if (d.papa === '早') rows.push({ kind: 'papa', text: 'どん17:30 パパ' });
+    else                  rows.push({ kind: 'papa', text: 'どん18:30 パパ' });
+    return rows;
+  }
+
+  if (!schoolOpen) rows.push({ kind: 'mama', text: '朝キッズ' });
+  rows.push({ kind: 'mama', text: '朝どん' });
+  if (d.papa === '早') {
+    rows.push({ kind: 'papa', text: 'キッズ17:00 パパ' });
+    rows.push({ kind: 'papa', text: 'どん17:30 パパ' });
+  } else {
+    rows.push({ kind: 'mama', text: 'キッズ18:00 ママ' });
+    rows.push({ kind: 'papa', text: 'どん18:30 パパ' });
+  }
+  return rows;
+}
+
+function isJiijiOff(d) {
+  if (d.dow === 2 || d.dow === 3) return true; // 火水固定
+  if (d.jiijiExtra === '休') return true;
+  return false;
+}
+
+// ===== 入力UI描画 =====
+function renderInputUI() {
+  document.getElementById('ym').value = `${state.year}-${String(state.month).padStart(2,'0')}`;
+  document.getElementById('holidaysCsv').value   = state.holidaysCsv;
+  document.getElementById('schoolOffDays').value = state.schoolOffDays;
+  document.getElementById('kindyOffDays').value  = state.kindyOffDays;
+
+  const head = document.getElementById('headRow');
+  const body = document.getElementById('gridBody');
+  head.innerHTML = '';
+  body.innerHTML = '';
+
+  // ヘッダー1列目（行ラベル列）
+  const corner = document.createElement('th');
+  corner.className = 'row-label';
+  corner.textContent = '';
+  head.appendChild(corner);
+
+  // ヘッダー：日付＋曜日＋祝日名
+  for (const d of state.days) {
+    const ctx = getDayCtx(d);
+    const th = document.createElement('th');
+    th.className = 'day-h';
+    if (ctx.isSat) th.classList.add('sat');
+    if (ctx.isSun) th.classList.add('sun');
+    if (ctx.isHoliday) th.classList.add('hol');
+    th.innerHTML = `<span class="dnum">${d.day}</span><span class="ddow">${DOW_NAMES[d.dow]}</span>` +
+      (ctx.holidayName ? `<span class="hname">${escapeHtml(ctx.holidayName)}</span>` : '');
+    head.appendChild(th);
+  }
+
+  // 行：パパ
+  body.appendChild(buildRow('パパ', d => renderPapaCell(d)));
+  // 行：ママ
+  body.appendChild(buildRow('ママ', d => renderMamaCell(d)));
+  // 行：つーちゃん
+  body.appendChild(buildRow('つーちゃん', d => renderTsuCell(d)));
+  // 行：じいじ
+  body.appendChild(buildRow('じいじ', d => renderJiijiCell(d)));
+}
+
+function buildRow(label, cellFn) {
+  const tr = document.createElement('tr');
+  const th = document.createElement('th');
+  th.className = 'row-label';
+  th.textContent = label;
+  tr.appendChild(th);
+  for (const d of state.days) {
+    const td = cellFn(d);
+    const ctx = getDayCtx(d);
+    if (ctx.isSat || ctx.isSun) td.classList.add('weekend');
+    if (ctx.isHoliday) td.classList.add('hol');
+    tr.appendChild(td);
+  }
+  return tr;
+}
+
+function renderPapaCell(d) {
+  const td = document.createElement('td');
+  td.textContent = d.papa || '';
+  if (d.papa && CLS.papa[d.papa]) td.classList.add(CLS.papa[d.papa]);
+  td.addEventListener('click', () => {
+    d.papa = cycle(PAPA_CYCLE, d.papa);
+    saveState();
+    renderAll();
+  });
+  return td;
+}
+
+function renderMamaCell(d) {
+  const td = document.createElement('td');
+  const ctx = getDayCtx(d);
+  if (ctx.isWeekendOrHoliday) {
+    td.textContent = '休';
+    td.classList.add('mama-yasumi', 'locked');
+    return td;
+  }
+  td.textContent = d.mama || '';
+  if (d.mama && CLS.mama[d.mama]) td.classList.add(CLS.mama[d.mama]);
+  td.addEventListener('click', () => {
+    d.mama = cycle(MAMA_CYCLE, d.mama);
+    saveState();
+    renderAll();
+  });
+  return td;
+}
+
+function renderTsuCell(d) {
+  const td = document.createElement('td');
+  td.textContent = d.tsu || '';
+  if (d.tsu && CLS.tsu[d.tsu]) td.classList.add(CLS.tsu[d.tsu]);
+  td.addEventListener('click', () => {
+    d.tsu = cycle(TSU_CYCLE, d.tsu);
+    saveState();
+    renderAll();
+  });
+  return td;
+}
+
+function renderJiijiCell(d) {
+  const td = document.createElement('td');
+  if (d.dow === 2 || d.dow === 3) {
+    td.textContent = '休';
+    td.classList.add('jiiji-auto', 'locked');
+    td.title = '火・水は自動休';
+    return td;
+  }
+  td.textContent = d.jiijiExtra || '';
+  if (d.jiijiExtra && CLS.jiiji[d.jiijiExtra]) td.classList.add(CLS.jiiji[d.jiijiExtra]);
+  td.addEventListener('click', () => {
+    d.jiijiExtra = cycle(JIIJI_CYCLE, d.jiijiExtra);
+    saveState();
+    renderAll();
+  });
+  return td;
+}
+
+function cycle(arr, current) {
+  const i = arr.indexOf(current);
+  return arr[(i + 1) % arr.length];
+}
+
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+
+// ===== 出力描画 =====
+function renderOutput() {
+  const meta = {
+    schoolOffDays: parseCsvNums(state.schoolOffDays),
+    kindyOffDays:  parseCsvNums(state.kindyOffDays)
+  };
+
+  // 判定時に「土日祝のママは休扱い」とするため、d.mamaを書き換えずに判定エンジンが祝日先決で処理する。
+  // 現在のjudgeDayは祝日先決なので問題なし。
+  const dayRows = state.days.map(d => ({ d, rows: judgeDay(d, meta) }));
+
+  const out = document.getElementById('output');
+  out.innerHTML = '';
+  out.appendChild(buildTitle());
+  out.appendChild(buildLegend());
+  out.appendChild(buildCalendarGrid(dayRows, meta));
+  out.appendChild(buildFacilitySummary(dayRows, meta));
+  out.appendChild(buildHomeSummary(dayRows, meta));
+  out.appendChild(buildKeyMap());
+}
+
+function buildTitle() {
+  const h = document.createElement('h1');
+  h.className = 'result-title';
+  h.textContent = `お迎え予定表 ${state.year}年${state.month}月`;
+  return h;
+}
+
+function buildLegend() {
+  const div = document.createElement('div');
+  div.className = 'legend';
+  div.innerHTML = `
+    <span><span class="dot" style="background:#bbdefb"></span>パパ</span>
+    <span><span class="dot" style="background:#f8bbd0"></span>ママ</span>
+    <span><span class="dot" style="background:#c8e6c9"></span>つーちゃん</span>
+    <span><span class="dot" style="background:#ffe0b2"></span>じいじ</span>
+    <span><span class="dot" style="background:#e0e0e0"></span>お休み</span>
+  `;
+  return div;
+}
+
+function buildCalendarGrid(dayRows, meta) {
+  const wrap = document.createElement('div');
+  wrap.className = 'cal-grid';
+
+  const headers = ['月','火','水','木','金','土','日'];
+  for (let i = 0; i < 7; i++) {
+    const h = document.createElement('div');
+    h.className = 'dow';
+    if (i === 5) h.classList.add('sat');
+    if (i === 6) h.classList.add('sun');
+    h.textContent = headers[i];
+    wrap.appendChild(h);
+  }
+
+  const firstDow = state.days[0].dow;
+  const monStart = (firstDow + 6) % 7;
+  for (let i = 0; i < monStart; i++) {
+    const c = document.createElement('div');
+    c.className = 'day-cell empty';
+    wrap.appendChild(c);
+  }
+
+  for (const { d, rows } of dayRows) {
+    const ctx = getDayCtx(d);
+    const cell = document.createElement('div');
+    cell.className = 'day-cell';
+    if (ctx.isSat || ctx.isSun) cell.classList.add('weekend');
+    if (ctx.isHoliday) cell.classList.add('holiday');
+
+    const num = document.createElement('div');
+    num.className = 'day-num';
+    if (ctx.isHoliday) num.classList.add('holiday');
+    else if (ctx.isSat) num.classList.add('sat');
+    else if (ctx.isSun) num.classList.add('sun');
+    num.textContent = d.day;
+    cell.appendChild(num);
+
+    if (meta && meta.schoolOffDays.includes(d.day)) {
+      const b = document.createElement('div');
+      b.className = 'badge-mark';
+      b.textContent = '学校休';
+      cell.appendChild(b);
+    }
+    if (meta && meta.kindyOffDays.includes(d.day)) {
+      const b = document.createElement('div');
+      b.className = 'badge-mark';
+      b.textContent = '園休';
+      cell.appendChild(b);
+    }
+
+    for (const r of rows) {
+      const item = document.createElement('div');
+      item.className = `row-item bg-${r.kind}`;
+      item.textContent = r.text;
+      cell.appendChild(item);
+    }
+
+    wrap.appendChild(cell);
+  }
+
+  return wrap;
+}
+
+function dateLabel(d) {
+  return `${state.month}/${d.day} (${DOW_NAMES[d.dow]})`;
+}
+
+function buildFacilitySummary(dayRows, meta) {
+  const div = document.createElement('div');
+  div.className = 'summary';
+
+  const kidsRows = [];
+  const donRows  = [];
+
+  for (const { d, rows } of dayRows) {
+    let morningKids = '', morningDon = '';
+    let pickupKids = '', pickupDon = '';
+
+    for (const r of rows) {
+      if (r.text === '朝キッズ') morningKids = '朝キッズ';
+      if (r.text === '朝どん')   morningDon  = '朝どん';
+      if (r.text.startsWith('キッズ')) pickupKids = r.text.replace('キッズ', '').trim();
+      if (r.text.startsWith('どん'))   pickupDon  = r.text.replace('どん', '').trim();
+    }
+
+    if (morningKids || pickupKids) {
+      kidsRows.push({ date: dateLabel(d), morning: morningKids || '-', pickup: pickupKids || '-' });
+    }
+    if (morningDon || pickupDon) {
+      if (!meta.kindyOffDays.includes(d.day)) {
+        donRows.push({ date: dateLabel(d), morning: morningDon || '-', pickup: pickupDon || '-' });
+      }
+    }
+  }
+
+  let html = '<h2>施設利用まとめ</h2>';
+  html += '<h3>キッズクラブ</h3>';
+  if (kidsRows.length === 0) html += '<div class="empty-msg">該当日なし</div>';
+  else {
+    html += '<table><tr><th>日付</th><th>朝</th><th>お迎え</th></tr>';
+    for (const r of kidsRows) html += `<tr><td>${r.date}</td><td class="${r.morning !== '-' ? 'use':''}">${r.morning}</td><td class="${r.pickup !== '-' ? 'use':''}">${r.pickup}</td></tr>`;
+    html += '</table>';
+  }
+  html += '<h3>どんぐり</h3>';
+  if (donRows.length === 0) html += '<div class="empty-msg">該当日なし</div>';
+  else {
+    html += '<table><tr><th>日付</th><th>朝</th><th>お迎え</th></tr>';
+    for (const r of donRows) html += `<tr><td>${r.date}</td><td class="${r.morning !== '-' ? 'use':''}">${r.morning}</td><td class="${r.pickup !== '-' ? 'use':''}">${r.pickup}</td></tr>`;
+    html += '</table>';
+  }
+  div.innerHTML = html;
+  return div;
+}
+
+function buildHomeSummary(dayRows, meta) {
+  const div = document.createElement('div');
+  div.className = 'summary';
+  div.style.marginTop = '8px';
+
+  const tsuDays = [];
+  const jiijiDays = [];
+
+  for (const { d } of dayRows) {
+    const ctx = getDayCtx(d);
+    if (ctx.isWeekendOrHoliday) continue;
+    const papaWork = d.papa === '早' || d.papa === '遅';
+    const mamaWork = d.mama === '出';
+    const tsuWork  = d.tsu !== '休';
+    const schoolOpen = !meta.schoolOffDays.includes(d.day);
+
+    if (papaWork && mamaWork && d.tsu === '休') tsuDays.push(dateLabel(d));
+    if (papaWork && mamaWork && tsuWork && (d.dow === 2 || d.dow === 3) && schoolOpen) jiijiDays.push(dateLabel(d));
+  }
+
+  let html = '<h2>家庭預かり</h2><div class="two-col">';
+  html += '<div><h3>つーちゃん預かり</h3>';
+  if (tsuDays.length === 0) html += '<div class="empty-msg">該当日なし</div>';
+  else { html += '<table><tr><th>日付</th></tr>'; for (const x of tsuDays) html += `<tr><td class="use">${x}</td></tr>`; html += '</table>'; }
+  html += '</div><div><h3>じいじ預かり</h3>';
+  if (jiijiDays.length === 0) html += '<div class="empty-msg">該当日なし</div>';
+  else { html += '<table><tr><th>日付</th></tr>'; for (const x of jiijiDays) html += `<tr><td class="use">${x}</td></tr>`; html += '</table>'; }
+  html += '</div></div>';
+  div.innerHTML = html;
+  return div;
+}
+
+function buildKeyMap() {
+  const div = document.createElement('div');
+  div.className = 'summary';
+  div.style.marginTop = '8px';
+  div.innerHTML = `
+    <h2>凡例</h2>
+    <table>
+      <tr><th>表記</th><th>意味</th></tr>
+      <tr><td>朝キッズ</td><td>朝キッズクラブに預ける</td></tr>
+      <tr><td>朝どん</td><td>朝どんぐり（延長保育）に預ける</td></tr>
+      <tr><td>キッズ / どん</td><td>お迎え（時間＋担当者）</td></tr>
+    </table>
+  `;
+  return div;
+}
+
+// ===== Googleカレンダー連携 =====
+function buildEventsForGas() {
+  const meta = {
+    schoolOffDays: parseCsvNums(state.schoolOffDays),
+    kindyOffDays:  parseCsvNums(state.kindyOffDays)
+  };
+  const events = [];
+  for (const d of state.days) {
+    const rows = judgeDay(d, meta);
+    const dateStr = `${state.year}-${String(state.month).padStart(2,'0')}-${String(d.day).padStart(2,'0')}`;
+    for (const r of rows) {
+      if (r.kind === 'off') continue;
+      const cal = (r.kind === 'papa') ? 'papa'
+                : (r.kind === 'mama') ? 'mama'
+                : (r.kind === 'tsuu') ? 'tsuu'
+                : null;
+      if (!cal) continue;
+      events.push({ cal, date: dateStr, title: r.text });
+    }
+  }
+  return events;
+}
+
+async function syncToGoogleCalendar() {
+  const status = document.getElementById('gasStatus');
+  status.className = 'gas-status';
+  const url = document.getElementById('gasUrl').value.trim();
+  if (!url) {
+    status.className = 'gas-status error';
+    status.textContent = 'Apps Script Web App URLが未設定です';
+    return;
+  }
+  localStorage.setItem(gasUrlKey(), url);
+
+  const events = buildEventsForGas();
+  const token = document.getElementById('gasToken').value.trim();
+  localStorage.setItem(gasTokenKey(), token);
+  const payload = { year: state.year, month: state.month, token, events };
+
+  status.textContent = `${events.length}件を送信中…`;
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(payload)
+    });
+    const text = await res.text();
+    let json;
+    try { json = JSON.parse(text); } catch (e) { json = null; }
+    if (res.ok && json && json.ok) {
+      status.className = 'gas-status success';
+      status.textContent = `登録完了（削除 ${json.deleted}件 / 追加 ${json.added}件）`;
+    } else {
+      status.className = 'gas-status error';
+      status.textContent = `エラー: ${text.slice(0, 300)}`;
+    }
+  } catch (e) {
+    status.className = 'gas-status error';
+    status.textContent = `通信エラー: ${e.message}`;
+  }
+}
+
+// ===== 初期化＆イベント =====
+function renderAll() {
+  renderInputUI();
+  renderOutput();
+}
+
+async function setYM(y, m) {
+  state = loadState(y, m);
+  renderAll();
+  // 祝日が空ならバックグラウンドで自動取得して再描画
+  const filled = await autoFillHolidaysIfEmpty();
+  if (filled) renderAll();
+}
+
+function init() {
+  document.getElementById('gasUrl').value   = localStorage.getItem(gasUrlKey())   || DEFAULT_GAS_URL;
+  document.getElementById('gasToken').value = localStorage.getItem(gasTokenKey()) || DEFAULT_GAS_TOKEN;
+
+  let y, m;
+  const savedYM = localStorage.getItem(configKey());
+  if (savedYM) {
+    const [yy, mm] = savedYM.split('-').map(Number);
+    y = yy; m = mm;
+  } else {
+    const now = new Date();
+    y = now.getFullYear();
+    m = now.getMonth() + 1;
+  }
+  setYM(y, m);
+
+  document.getElementById('ym').addEventListener('change', (e) => {
+    const v = e.target.value;
+    if (!v) return;
+    const [yy, mm] = v.split('-').map(Number);
+    setYM(yy, mm);
+  });
+  document.getElementById('prevMonth').addEventListener('click', () => {
+    let yy = state.year, mm = state.month - 1;
+    if (mm < 1) { mm = 12; yy--; }
+    setYM(yy, mm);
+  });
+  document.getElementById('nextMonth').addEventListener('click', () => {
+    let yy = state.year, mm = state.month + 1;
+    if (mm > 12) { mm = 1; yy++; }
+    setYM(yy, mm);
+  });
+
+  for (const id of ['holidaysCsv', 'schoolOffDays', 'kindyOffDays']) {
+    document.getElementById(id).addEventListener('input', (e) => {
+      state[id] = e.target.value;
+      saveState();
+      renderAll();
+    });
+  }
+  // クリアボタン
+  document.querySelectorAll('.clear-btn[data-clear]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.clear;
+      state[id] = '';
+      document.getElementById(id).value = '';
+      saveState();
+      renderAll();
+    });
+  });
+
+  document.getElementById('reset').addEventListener('click', () => {
+    if (!confirm(`${state.year}年${state.month}月の入力を全てリセットします。よろしいですか？`)) return;
+    localStorage.removeItem(stateKey(state.year, state.month));
+    setYM(state.year, state.month);
+  });
+
+  document.getElementById('print').addEventListener('click', () => window.print());
+  document.getElementById('syncCal').addEventListener('click', syncToGoogleCalendar);
+  document.getElementById('fetchHolidays').addEventListener('click', refetchHolidaysForce);
+  document.getElementById('gasUrl').addEventListener('change', (e) => localStorage.setItem(gasUrlKey(), e.target.value.trim()));
+  document.getElementById('gasToken').addEventListener('change', (e) => localStorage.setItem(gasTokenKey(), e.target.value.trim()));
+}
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+
+</body>
+</html>

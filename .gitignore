@@ -1,0 +1,4 @@
+.DS_Store
+.clasprc.json
+apps-script/.clasp.json
+apps-script/*.bak
