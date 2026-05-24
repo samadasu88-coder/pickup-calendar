@@ -358,6 +358,8 @@
   <button id="nextMonth">＞</button>
   <button id="print">印刷</button>
   <button id="reset" class="danger">リセット</button>
+  <button id="cloudSave">☁ 保存</button>
+  <button id="cloudLoad">☁ 読込</button>
   <button id="syncCal" class="primary">Googleカレンダー登録</button>
 </div>
 
@@ -1004,6 +1006,91 @@ function buildEventsForGas() {
   return events;
 }
 
+function collectLocalState() {
+  const out = {};
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (!k) continue;
+    // 端末固有のキャッシュ（祝日キャッシュ、GAS URL/トークン）は除外
+    if (k === holidaysCacheKey() || k === gasUrlKey() || k === gasTokenKey()) continue;
+    if (k.startsWith('oimukae-')) out[k] = localStorage.getItem(k);
+  }
+  return out;
+}
+
+function postToGas(payload, statusMsg) {
+  const status = document.getElementById('gasStatus');
+  status.className = 'gas-status';
+  status.textContent = statusMsg;
+  const url = document.getElementById('gasUrl').value.trim() || DEFAULT_GAS_URL;
+  const token = document.getElementById('gasToken').value.trim();
+  return fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ ...payload, token })
+  }).then(async res => {
+    const text = await res.text();
+    let json;
+    try { json = JSON.parse(text); } catch (_) {}
+    return { res, json, text };
+  });
+}
+
+async function cloudSave() {
+  const status = document.getElementById('gasStatus');
+  try {
+    const data = collectLocalState();
+    const { res, json, text } = await postToGas({ action: 'sync-save', payload: JSON.stringify(data) }, 'クラウドへ保存中…');
+    if (res.ok && json && json.ok) {
+      status.className = 'gas-status success';
+      status.textContent = `クラウド保存完了 (${new Date(json.updated).toLocaleString('ja-JP')})`;
+    } else {
+      status.className = 'gas-status error';
+      status.textContent = 'エラー: ' + (json && json.error ? json.error : text.slice(0, 200));
+    }
+  } catch (e) {
+    status.className = 'gas-status error';
+    status.textContent = '通信エラー: ' + e.message;
+  }
+}
+
+async function cloudLoad() {
+  if (!confirm('クラウドから最新データを読み込み、この端末のデータを上書きします。よろしいですか？')) return;
+  const status = document.getElementById('gasStatus');
+  try {
+    const { res, json, text } = await postToGas({ action: 'sync-load' }, 'クラウドから読み込み中…');
+    if (!(res.ok && json && json.ok)) {
+      status.className = 'gas-status error';
+      status.textContent = 'エラー: ' + (json && json.error ? json.error : text.slice(0, 200));
+      return;
+    }
+    const data = JSON.parse(json.payload || '{}');
+    // 既存のoimukae-*キーを一度クリア → 受信データで上書き（古い月が消える）
+    const toRemove = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith('oimukae-') && k !== holidaysCacheKey() && k !== gasUrlKey() && k !== gasTokenKey()) toRemove.push(k);
+    }
+    toRemove.forEach(k => localStorage.removeItem(k));
+    for (const [k, v] of Object.entries(data)) {
+      if (v != null) localStorage.setItem(k, v);
+    }
+    status.className = 'gas-status success';
+    status.textContent = `読込完了 (${new Date(json.updated).toLocaleString('ja-JP')})。再表示します`;
+    // 現在月を読み直して再描画
+    const savedYM = localStorage.getItem(configKey());
+    if (savedYM) {
+      const [yy, mm] = savedYM.split('-').map(Number);
+      await setYM(yy, mm);
+    } else {
+      renderAll();
+    }
+  } catch (e) {
+    status.className = 'gas-status error';
+    status.textContent = '通信エラー: ' + e.message;
+  }
+}
+
 async function syncToGoogleCalendar() {
   const status = document.getElementById('gasStatus');
   status.className = 'gas-status';
@@ -1115,6 +1202,8 @@ function init() {
   });
 
   document.getElementById('print').addEventListener('click', () => window.print());
+  document.getElementById('cloudSave').addEventListener('click', cloudSave);
+  document.getElementById('cloudLoad').addEventListener('click', cloudLoad);
   document.getElementById('syncCal').addEventListener('click', syncToGoogleCalendar);
   document.getElementById('fetchHolidays').addEventListener('click', refetchHolidaysForce);
   document.getElementById('gasUrl').addEventListener('change', (e) => localStorage.setItem(gasUrlKey(), e.target.value.trim()));
