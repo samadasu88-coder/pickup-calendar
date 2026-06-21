@@ -929,9 +929,7 @@ function buildFacilitySummary(dayRows, meta) {
       kidsRows.push({ date: dateLabel(d), morning: morningKids || '-', pickup: pickupKids || '-' });
     }
     if (morningDon || pickupDon) {
-      if (!meta.kindyOffDays.includes(d.day)) {
-        donRows.push({ date: dateLabel(d), morning: morningDon || '-', pickup: pickupDon || '-' });
-      }
+      donRows.push({ date: dateLabel(d), morning: morningDon || '-', pickup: pickupDon || '-' });
     }
   }
 
