@@ -646,9 +646,12 @@ function judgeDay(d, meta) {
     return rows;
   }
 
-  // じいじ預かり（フル）：キッズ・どんを出さず「じいじ」のみ表示
+  // じいじ預かり：ゆうなはじいじが見る（キッズなし）。ほのかは通常どおりどんぐり
   if (d.jiijiExtra === '預') {
     rows.push({ kind: 'jiiji', text: 'じいじ' });
+    rows.push({ kind: 'mama', text: '朝どん' });
+    if (d.papa === '早') rows.push({ kind: 'papa', text: 'どん17:30 パパ' });
+    else                rows.push({ kind: 'papa', text: 'どん18:30 パパ' });
     return rows;
   }
 
@@ -1015,7 +1018,7 @@ function buildKeyMap() {
       <tr><td>朝キッズ</td><td>朝キッズクラブに預ける</td></tr>
       <tr><td>朝どん</td><td>朝どんぐり（延長保育）に預ける</td></tr>
       <tr><td>キッズ / どん</td><td>お迎え（時間＋担当者）</td></tr>
-      <tr><td>じいじ</td><td>じいじ預かり（キッズ・どんなし）</td></tr>
+      <tr><td>じいじ</td><td>じいじ預かり（キッズなし／どんは利用）</td></tr>
     </table>
   `;
   return div;
