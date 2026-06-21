@@ -175,6 +175,7 @@
   table.grid-input tbody td.mama-yasumi  { background: #e0e0e0; color: #555; }
   table.grid-input tbody td.tsu-yasumi   { background: #c8e6c9; color: #1b5e20; }
   table.grid-input tbody td.jiiji-yasumi { background: #ffe0b2; color: #e65100; }
+  table.grid-input tbody td.jiiji-azukari { background: #fb8c00; color: #fff; font-weight: bold; }
   table.grid-input tbody td.jiiji-auto   { background: #fff3e0; color: #bf360c; opacity: 0.85; cursor: not-allowed; }
 
   table.grid-input tbody td.locked { cursor: not-allowed; opacity: 0.85; }
@@ -415,7 +416,7 @@
     パパ：<b style="background:#bbdefb;padding:0 4px">早</b>→<b style="background:#1976d2;color:#fff;padding:0 4px">遅</b>→<b style="background:#e0e0e0;padding:0 4px">休</b>　／
     ママ：<b style="background:#f8bbd0;padding:0 4px">出</b>→<b style="background:#e0e0e0;padding:0 4px">休</b>（土日祝は休固定）　／
     つーちゃん：空→<b style="background:#c8e6c9;padding:0 4px">休</b>　／
-    じいじ：火水は自動休（薄色）、他曜日は空→<b style="background:#ffe0b2;padding:0 4px">休</b>
+    じいじ：火水は自動休（タップで<b style="background:#fb8c00;color:#fff;padding:0 4px">預</b>）、他曜日は空→休→<b style="background:#fb8c00;color:#fff;padding:0 4px">預</b>
   </div>
 </div>
 
@@ -444,14 +445,14 @@ const DEFAULT_GAS_TOKEN = '';
 const PAPA_CYCLE = ['早', '遅', '休'];
 const MAMA_CYCLE = ['出', '休'];
 const TSU_CYCLE  = ['', '休'];
-const JIIJI_CYCLE = ['', '休']; // 火水以外で使う
+const JIIJI_CYCLE = ['', '休', '預']; // 火水以外で使う（預=フルじいじ預かり）
 
 // 値 → CSSクラス（日本語クラス名は環境依存があるため英字に）
 const CLS = {
   papa:  { '早': 'papa-haya',   '遅': 'papa-oso',    '休': 'papa-yasumi' },
   mama:  { '出': 'mama-shukkin','休': 'mama-yasumi' },
   tsu:   { '休': 'tsu-yasumi' },
-  jiiji: { '休': 'jiiji-yasumi' }
+  jiiji: { '休': 'jiiji-yasumi', '預': 'jiiji-azukari' }
 };
 
 // ===== 状態 =====
@@ -645,6 +646,12 @@ function judgeDay(d, meta) {
     return rows;
   }
 
+  // じいじ預かり（フル）：キッズ・どんを出さず「じいじ」のみ表示
+  if (d.jiijiExtra === '預') {
+    rows.push({ kind: 'jiiji', text: 'じいじ' });
+    return rows;
+  }
+
   const jiijiOff   = isJiijiOff(d);
   const schoolOpen = !meta.schoolOffDays.includes(d.day);
 
@@ -775,9 +782,20 @@ function renderTsuCell(d) {
 function renderJiijiCell(d) {
   const td = document.createElement('td');
   if (d.dow === 2 || d.dow === 3) {
-    td.textContent = '休';
-    td.classList.add('jiiji-auto', 'locked');
-    td.title = '火・水は自動休';
+    // 火水は自動休。タップで「預」（フルじいじ預かり）に切替
+    if (d.jiijiExtra === '預') {
+      td.textContent = '預';
+      td.classList.add('jiiji-azukari');
+    } else {
+      td.textContent = '休';
+      td.classList.add('jiiji-auto');
+    }
+    td.title = '火・水は自動休（タップで預かりに切替）';
+    td.addEventListener('click', () => {
+      d.jiijiExtra = (d.jiijiExtra === '預') ? '' : '預';
+      saveState();
+      renderAll();
+    });
     return td;
   }
   td.textContent = d.jiijiExtra || '';
@@ -969,7 +987,9 @@ function buildHomeSummary(dayRows, meta) {
     const schoolOpen = !meta.schoolOffDays.includes(d.day);
 
     if (papaWork && mamaWork && d.tsu === '休') tsuDays.push(dateLabel(d));
-    if (papaWork && mamaWork && tsuWork && (d.dow === 2 || d.dow === 3) && schoolOpen) jiijiDays.push(dateLabel(d));
+    const jiijiManual = d.jiijiExtra === '預';
+    const jiijiAuto   = (d.dow === 2 || d.dow === 3) && schoolOpen;
+    if (papaWork && mamaWork && tsuWork && (jiijiManual || jiijiAuto)) jiijiDays.push(dateLabel(d));
   }
 
   let html = '<h2>家庭預かり</h2><div class="two-col">';
@@ -995,6 +1015,7 @@ function buildKeyMap() {
       <tr><td>朝キッズ</td><td>朝キッズクラブに預ける</td></tr>
       <tr><td>朝どん</td><td>朝どんぐり（延長保育）に預ける</td></tr>
       <tr><td>キッズ / どん</td><td>お迎え（時間＋担当者）</td></tr>
+      <tr><td>じいじ</td><td>じいじ預かり（キッズ・どんなし）</td></tr>
     </table>
   `;
   return div;
