@@ -416,7 +416,7 @@
     パパ：<b style="background:#bbdefb;padding:0 4px">早</b>→<b style="background:#1976d2;color:#fff;padding:0 4px">遅</b>→<b style="background:#e0e0e0;padding:0 4px">休</b>　／
     ママ：<b style="background:#f8bbd0;padding:0 4px">出</b>→<b style="background:#e0e0e0;padding:0 4px">休</b>（土日祝は休固定）　／
     つーちゃん：空→<b style="background:#c8e6c9;padding:0 4px">休</b>　／
-    じいじ：火水は自動休（タップで<b style="background:#fb8c00;color:#fff;padding:0 4px">預</b>）、他曜日は空→休→<b style="background:#fb8c00;color:#fff;padding:0 4px">預</b>
+    じいじ：火水は自動休・キッズ利用なし（タップで<b style="background:#fb8c00;color:#fff;padding:0 4px">預</b>）、他曜日は空→休→<b style="background:#fb8c00;color:#fff;padding:0 4px">預</b>
   </div>
 </div>
 
@@ -445,7 +445,7 @@ const DEFAULT_GAS_TOKEN = '';
 const PAPA_CYCLE = ['早', '遅', '休'];
 const MAMA_CYCLE = ['出', '休'];
 const TSU_CYCLE  = ['', '休'];
-const JIIJI_CYCLE = ['', '休', '預']; // 火水以外で使う（預=フルじいじ預かり）
+const JIIJI_CYCLE = ['', '休', '預']; // 火水以外で使う（預=ゆうなのじいじ預かり）
 
 // 値 → CSSクラス（日本語クラス名は環境依存があるため英字に）
 const CLS = {
@@ -556,7 +556,7 @@ function emptyState(y, m) {
       papa: '休',
       mama: '休',
       tsu: '',        // '' or '休'
-      jiijiExtra: ''  // '' or '休'（火水以外のみ意味あり）
+      jiijiExtra: ''  // '' or '休' or '預'
     });
   }
   return {
@@ -655,10 +655,13 @@ function judgeDay(d, meta) {
     return rows;
   }
 
+  const fixedJiijiOff = isFixedJiijiOffDay(d);
   const jiijiOff   = isJiijiOff(d);
   const schoolOpen = !meta.schoolOffDays.includes(d.day);
 
-  if (jiijiOff && schoolOpen) {
+  // 火水は学校の有無にかかわらず、ゆうなはキッズを利用せずじいじのところへ帰る。
+  // 火水以外の追加休は、学校がある日だけ従来どおりじいじが帰宅を待つ。
+  if (fixedJiijiOff || (jiijiOff && schoolOpen)) {
     rows.push({ kind: 'mama', text: '朝どん' });
     if (d.papa === '早') rows.push({ kind: 'papa', text: 'どん17:30 パパ' });
     else                  rows.push({ kind: 'papa', text: 'どん18:30 パパ' });
@@ -677,8 +680,12 @@ function judgeDay(d, meta) {
   return rows;
 }
 
+function isFixedJiijiOffDay(d) {
+  return d.dow === 2 || d.dow === 3;
+}
+
 function isJiijiOff(d) {
-  if (d.dow === 2 || d.dow === 3) return true; // 火水固定
+  if (isFixedJiijiOffDay(d)) return true; // 火水固定
   if (d.jiijiExtra === '休') return true;
   return false;
 }
@@ -987,11 +994,10 @@ function buildHomeSummary(dayRows, meta) {
     const papaWork = d.papa === '早' || d.papa === '遅';
     const mamaWork = d.mama === '出';
     const tsuWork  = d.tsu !== '休';
-    const schoolOpen = !meta.schoolOffDays.includes(d.day);
 
     if (papaWork && mamaWork && d.tsu === '休') tsuDays.push(dateLabel(d));
     const jiijiManual = d.jiijiExtra === '預';
-    const jiijiAuto   = (d.dow === 2 || d.dow === 3) && schoolOpen;
+    const jiijiAuto   = isFixedJiijiOffDay(d);
     if (papaWork && mamaWork && tsuWork && (jiijiManual || jiijiAuto)) jiijiDays.push(dateLabel(d));
   }
 
