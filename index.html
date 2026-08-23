@@ -176,7 +176,8 @@
   table.grid-input tbody td.tsu-yasumi   { background: #c8e6c9; color: #1b5e20; }
   table.grid-input tbody td.jiiji-yasumi { background: #ffe0b2; color: #e65100; }
   table.grid-input tbody td.jiiji-azukari { background: #fb8c00; color: #fff; font-weight: bold; }
-  table.grid-input tbody td.jiiji-auto   { background: #fff3e0; color: #bf360c; opacity: 0.85; cursor: not-allowed; }
+  table.grid-input tbody td.jiiji-auto   { background: #fff3e0; color: #bf360c; opacity: 0.85; }
+  table.grid-input tbody td.jiiji-fuka   { background: #eceff1; color: #78909c; }
 
   table.grid-input tbody td.locked { cursor: not-allowed; opacity: 0.85; }
 
@@ -416,7 +417,7 @@
     パパ：<b style="background:#bbdefb;padding:0 4px">早</b>→<b style="background:#1976d2;color:#fff;padding:0 4px">遅</b>→<b style="background:#e0e0e0;padding:0 4px">休</b>　／
     ママ：<b style="background:#f8bbd0;padding:0 4px">出</b>→<b style="background:#e0e0e0;padding:0 4px">休</b>（土日祝は休固定）　／
     つーちゃん：空→<b style="background:#c8e6c9;padding:0 4px">休</b>　／
-    じいじ：火水は自動休・キッズ利用なし（タップで<b style="background:#fb8c00;color:#fff;padding:0 4px">預</b>＝キッズ・どんなし）、他曜日は空→休→<b style="background:#fb8c00;color:#fff;padding:0 4px">預</b>
+    じいじ：火水は<b style="background:#fff3e0;padding:0 4px">休</b>（自動・キッズ利用なし）→<b style="background:#fb8c00;color:#fff;padding:0 4px">預</b>（キッズ・どんなし）→<b style="background:#eceff1;color:#78909c;padding:0 4px">×</b>（預かり不可）、他曜日は空→休→<b style="background:#fb8c00;color:#fff;padding:0 4px">預</b>
   </div>
 </div>
 
@@ -446,13 +447,14 @@ const PAPA_CYCLE = ['早', '遅', '休'];
 const MAMA_CYCLE = ['出', '休'];
 const TSU_CYCLE  = ['', '休'];
 const JIIJI_CYCLE = ['', '休', '預']; // 火水以外で使う（預=2人ともじいじ預かり）
+const JIIJI_TUEWED_CYCLE = ['', '預', '×']; // 火水で使う（''=自動休、×=じいじ預かり不可）
 
 // 値 → CSSクラス（日本語クラス名は環境依存があるため英字に）
 const CLS = {
   papa:  { '早': 'papa-haya',   '遅': 'papa-oso',    '休': 'papa-yasumi' },
   mama:  { '出': 'mama-shukkin','休': 'mama-yasumi' },
   tsu:   { '休': 'tsu-yasumi' },
-  jiiji: { '休': 'jiiji-yasumi', '預': 'jiiji-azukari' }
+  jiiji: { '休': 'jiiji-yasumi', '預': 'jiiji-azukari', '×': 'jiiji-fuka' }
 };
 
 // ===== 状態 =====
@@ -556,7 +558,7 @@ function emptyState(y, m) {
       papa: '休',
       mama: '休',
       tsu: '',        // '' or '休'
-      jiijiExtra: ''  // '' or '休' or '預'
+      jiijiExtra: ''  // '' or '休' or '預' or '×'（×=火水の自動休を打ち消して預かり不可にする）
     });
   }
   return {
@@ -678,6 +680,7 @@ function judgeDay(d, meta) {
 }
 
 function isFixedJiijiOffDay(d) {
+  if (d.jiijiExtra === '×') return false; // 手動で「預かり不可」にした日は火水でも自動休にしない
   return d.dow === 2 || d.dow === 3;
 }
 
@@ -789,17 +792,20 @@ function renderTsuCell(d) {
 function renderJiijiCell(d) {
   const td = document.createElement('td');
   if (d.dow === 2 || d.dow === 3) {
-    // 火水は自動休。タップで「預」（フルじいじ預かり）に切替
+    // 火水はタップで 休（自動）→ 預 → ×（預かり不可）の3択
     if (d.jiijiExtra === '預') {
       td.textContent = '預';
       td.classList.add('jiiji-azukari');
+    } else if (d.jiijiExtra === '×') {
+      td.textContent = '×';
+      td.classList.add('jiiji-fuka');
     } else {
       td.textContent = '休';
       td.classList.add('jiiji-auto');
     }
-    td.title = '火・水は自動休（タップで預かりに切替）';
+    td.title = '火・水：休（自動）→ 預（キッズ・どんなし）→ ×（じいじ預かり不可）';
     td.addEventListener('click', () => {
-      d.jiijiExtra = (d.jiijiExtra === '預') ? '' : '預';
+      d.jiijiExtra = cycle(JIIJI_TUEWED_CYCLE, d.jiijiExtra);
       saveState();
       renderAll();
     });
