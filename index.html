@@ -48,6 +48,15 @@
   .controls .danger { border-color: #c00; color: #c00; }
   .controls .primary { background: #2979ff; color: #fff; border-color: #2979ff; }
 
+  .sync-flow { width:100%; display:grid; grid-template-columns:1fr 1fr 1fr; align-items:center; gap:6px; text-align:center; }
+  .sync-flow button { min-height:44px; font-weight:bold; }
+  .sync-flow #cloudSave { background:#176d45; color:white; border-color:#176d45; }
+  button:disabled { opacity:.45; cursor:default; }
+  #syncStatus { grid-column:1 / -1; text-align:left; width:100%; padding:8px; border-radius:4px; background:#e3f2fd; line-height:1.6; }
+  #syncStatus[data-kind="dirty"] { background:#fff3cd; color:#714e00; }
+  #syncStatus[data-kind="error"] { background:#ffebee; color:#b71c1c; }
+  .input-panel[inert] { opacity:.5; }
+
   /* パネル */
   .panel {
     background: #fff;
@@ -377,14 +386,18 @@
   <button id="nextMonth">＞</button>
   <button id="print">印刷</button>
   <button id="reset" class="danger">リセット</button>
-  <button id="cloudSave">☁ 保存</button>
-  <button id="cloudLoad">☁ 読込</button>
-  <button id="syncCal" class="primary">Googleカレンダー登録</button>
+  <div class="sync-flow">
+    <button id="cloudLoad">① 最新の予定を読込</button>
+    <span>② 予定を入力</span>
+    <button id="cloudSave" disabled>③ 予定を保存</button>
+    <div id="syncStatus" role="status" aria-live="polite">最新の予定を読み込みます…</div>
+  </div>
+  <button id="syncCal">Googleカレンダー登録</button>
 </div>
 
 <div id="toast"></div>
 
-<div class="panel input-panel">
+<div class="panel input-panel" inert>
   <h2>勤務入力（クリックで状態切替）</h2>
   <div class="meta-inputs">
     <label>祝日（自動取得・編集可）
@@ -460,6 +473,23 @@ const CLS = {
 
 // ===== 状態 =====
 let state = null;
+let syncReady = false, syncBusy = false, dirty = false, baseUpdated = '';
+let syncMessage = '最新の予定を読み込みます…', syncKind = '';
+function draftKey() { return stateKey(state.year, state.month) + '-draft'; }
+function updateSyncUI(message, kind = '') {
+  if (message !== undefined) { syncMessage = message; syncKind = kind; }
+  const status = document.getElementById('syncStatus');
+  status.textContent = syncMessage;
+  status.dataset.kind = syncKind;
+  document.querySelector('.input-panel').inert = !syncReady || syncBusy;
+  for (const id of ['ym','prevMonth','nextMonth','cloudLoad','gasUrl','gasToken']) document.getElementById(id).disabled = syncBusy;
+  document.getElementById('cloudSave').disabled = !syncReady || syncBusy || !dirty;
+  document.getElementById('reset').disabled = !syncReady || syncBusy;
+  document.getElementById('syncCal').disabled = !syncReady || syncBusy || dirty;
+}
+function readDraft() {
+  try { return JSON.parse(localStorage.getItem(draftKey()) || 'null'); } catch (_) { return null; }
+}
 
 // ===== ユーティリティ =====
 function daysInMonth(y, m) { return new Date(y, m, 0).getDate(); }
@@ -524,9 +554,10 @@ function extractMonthHolidays(allHolidays, y, m) {
 }
 
 async function autoFillHolidaysIfEmpty() {
+  const target = state;
   if (state.holidaysCsv && state.holidaysCsv.trim()) return false;
   const all = await fetchJpHolidaysAll();
-  if (!all) return false;
+  if (!all || target !== state || state.holidaysCsv.trim()) return false;
   const csv = extractMonthHolidays(all, state.year, state.month);
   if (csv) {
     state.holidaysCsv = csv;
@@ -537,11 +568,13 @@ async function autoFillHolidaysIfEmpty() {
 }
 
 async function refetchHolidaysForce() {
+  const target = state;
   const all = await fetchJpHolidaysAll(true);
   if (!all) {
     alert('祝日の取得に失敗しました（ネットワーク接続を確認してください）');
     return;
   }
+  if (target !== state || !syncReady || syncBusy) return;
   const csv = extractMonthHolidays(all, state.year, state.month);
   state.holidaysCsv = csv;
   saveState();
@@ -605,6 +638,9 @@ function loadState(y, m) {
 }
 
 function saveState() {
+  dirty = true;
+  localStorage.setItem(draftKey(), JSON.stringify({ payload: JSON.stringify(state), baseUpdated }));
+  updateSyncUI('② 入力中・未保存です。入力が終わったら「③ 予定を保存」を押してください。', 'dirty');
   localStorage.setItem(stateKey(state.year, state.month), JSON.stringify(state));
   localStorage.setItem(configKey(), `${state.year}-${String(state.month).padStart(2,'0')}`);
 }
@@ -1069,11 +1105,13 @@ function showToast(kind, message, autoHideMs) {
 function withBusy(btnId, busyLabel, fn) {
   const btn = document.getElementById(btnId);
   const original = btn.textContent;
+  syncBusy = true;
+  updateSyncUI();
   btn.disabled = true;
   btn.textContent = busyLabel;
   return Promise.resolve()
     .then(fn)
-    .finally(() => { btn.disabled = false; btn.textContent = original; });
+    .finally(() => { syncBusy = false; btn.textContent = original; updateSyncUI(); });
 }
 
 function postToGas(payload, statusMsg) {
@@ -1083,6 +1121,7 @@ function postToGas(payload, statusMsg) {
   const url = document.getElementById('gasUrl').value.trim() || DEFAULT_GAS_URL;
   const token = document.getElementById('gasToken').value.trim();
   return fetch(url, {
+    signal: AbortSignal.timeout(25000),
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: JSON.stringify({ ...payload, token })
@@ -1099,48 +1138,80 @@ function currentYm() {
 }
 
 function cloudSave() {
+  if (!syncReady || syncBusy || !dirty) return Promise.resolve();
   return withBusy('cloudSave', '保存中…', async () => {
-    const ym = currentYm();
-    showToast('info', `${state.year}年${state.month}月をクラウドへ保存中…`);
+    updateSyncUI('③ 予定を保存しています。このままお待ちください。');
     try {
-      const payload = localStorage.getItem(stateKey(state.year, state.month)) || '';
-      const { res, json, text } = await postToGas({ action: 'sync-save', ym, payload }, '');
-      if (res.ok && json && json.ok) {
-        showToast('success', `✓ ${state.year}年${state.month}月をクラウドに保存しました (${new Date(json.updated).toLocaleString('ja-JP')})`, 5000);
-      } else {
-        showToast('error', '保存失敗: ' + (json && json.error ? json.error : text.slice(0, 200)));
+      const { res, json } = await postToGas({ action: 'sync-save', ym: currentYm(), payload: JSON.stringify(state), baseUpdated }, '');
+      if (json && json.error === 'conflict') {
+        syncReady = false;
+        updateSyncUI('別デバイスで更新されています。今回の入力は端末に残しています。内容を控えてから「① 最新の予定を読込」を押し、変更を入れ直してください。', 'error');
+        return;
       }
+      if (!res.ok || !json || !json.ok) throw new Error('保存できませんでした');
+      baseUpdated = json.updated;
+      dirty = false;
+      localStorage.removeItem(draftKey());
+      updateSyncUI('✓ 保存済み。他のデバイスからも読み込めます。');
     } catch (e) {
-      showToast('error', '通信エラー: ' + e.message);
+      updateSyncUI('保存を確認できませんでした。入力は端末に残っています。通信を確認して、もう一度保存してください。', 'error');
     }
   });
 }
 
-function cloudLoad() {
-  if (!confirm(`${state.year}年${state.month}月のデータをクラウドから取り込みます。現在この月に入力中の内容は上書きされます。よろしいですか？`)) return Promise.resolve();
-  return withBusy('cloudLoad', '読込中…', async () => {
-    const ym = currentYm();
-    showToast('info', `${state.year}年${state.month}月をクラウドから読み込み中…`);
+function validateCloudPayload(raw) {
+  const value = JSON.parse(raw);
+  if (value.year !== state.year || value.month !== state.month || !Array.isArray(value.days) || value.days.length !== daysInMonth(state.year, state.month)) throw new Error('予定データの形式を確認できません');
+  return value;
+}
+
+function cloudLoad(automatic = false) {
+  if (syncBusy) return Promise.resolve();
+  if (!automatic && dirty && !confirm('未保存の入力を最新の予定に置き換えます。必要な変更を控えましたか？（端末にはバックアップも残します）')) return Promise.resolve();
+  syncReady = false;
+  return withBusy('cloudLoad', '① 読込中…', async () => {
+    updateSyncUI('① 最新の予定を読込中… 完了するまで入力できません。');
     try {
-      const { res, json, text } = await postToGas({ action: 'sync-load', ym }, '');
-      if (!(res.ok && json && json.ok)) {
-        showToast('error', '読込失敗: ' + (json && json.error ? json.error : text.slice(0, 200)));
+      const { res, json } = await postToGas({ action: 'sync-load', ym: currentYm() }, '');
+      if (!res.ok || !json || !json.ok) throw new Error('読込に失敗しました');
+      if (json.syncProtocol !== 1) throw new Error('保存先の更新が必要です');
+      if (json.payload) validateCloudPayload(json.payload);
+      const draft = readDraft();
+      const updated = json.updated || '';
+      if (automatic && draft && draft.baseUpdated !== updated) {
+        dirty = true;
+        updateSyncUI('未保存の入力があり、別デバイスの予定も更新されています。入力は端末に残しています。内容を控えてから「① 最新の予定を読込」を押してください。', 'error');
         return;
       }
-      if (!json.payload) {
-        showToast('error', `クラウドに ${state.year}年${state.month}月のデータがありません（ローカルは保持）`);
-        return;
+      const key = stateKey(state.year, state.month);
+      const previous = localStorage.getItem(key);
+      if (previous) localStorage.setItem(key + '-before-load', previous);
+      baseUpdated = updated;
+      if (automatic && draft) {
+        validateCloudPayload(draft.payload);
+        localStorage.setItem(key, draft.payload);
+        state = loadState(state.year, state.month);
+        dirty = true;
+      } else {
+        // クラウドにない月は新規作成。古い端末データを勝手に共有しない。
+        localStorage.setItem(key, json.payload || JSON.stringify(emptyState(state.year, state.month)));
+        state = loadState(state.year, state.month);
+        dirty = false;
+        localStorage.removeItem(draftKey());
       }
-      localStorage.setItem(stateKey(state.year, state.month), json.payload);
-      showToast('success', `✓ ${state.year}年${state.month}月を読み込みました (${new Date(json.updated).toLocaleString('ja-JP')})`, 5000);
-      await setYM(state.year, state.month);
+      renderAll();
+      await autoFillHolidaysIfEmpty();
+      renderAll();
+      syncReady = true;
+      updateSyncUI(dirty ? '② 未保存の入力があります。確認して「③ 予定を保存」を押してください。' : (json.payload ? '✓ ① 読込完了。② 予定を入力してください。' : '✓ ① 確認完了。この月はまだ予定がありません。② 入力して保存してください。'), dirty ? 'dirty' : '');
     } catch (e) {
-      showToast('error', '通信エラー: ' + e.message);
+      updateSyncUI('読込できませんでした。入力・保存は停止しています。通信や詳細設定を確認して「① 最新の予定を読込」を押してください。' + e.message, 'error');
     }
   });
 }
 
 function syncToGoogleCalendar() {
+  if (!syncReady || syncBusy || dirty) return Promise.resolve();
   return withBusy('syncCal', '登録中…', async () => {
     const events = buildEventsForGas();
     showToast('info', `${events.length}件をGoogleカレンダーへ登録中…`);
@@ -1169,11 +1240,15 @@ function renderAll() {
 }
 
 async function setYM(y, m) {
+  if (syncBusy) return;
+  syncReady = false;
   state = loadState(y, m);
+  dirty = !!readDraft();
+  baseUpdated = '';
+  localStorage.setItem(configKey(), currentYm());
   renderAll();
-  // 祝日が空ならバックグラウンドで自動取得して再描画
-  const filled = await autoFillHolidaysIfEmpty();
-  if (filled) renderAll();
+  updateSyncUI();
+  await cloudLoad(true);
 }
 
 function init() {
@@ -1229,17 +1304,20 @@ function init() {
 
   document.getElementById('reset').addEventListener('click', () => {
     if (!confirm(`${state.year}年${state.month}月の入力を全てリセットします。よろしいですか？`)) return;
-    localStorage.removeItem(stateKey(state.year, state.month));
-    setYM(state.year, state.month);
+    state = emptyState(state.year, state.month);
+    saveState();
+    renderAll();
   });
 
   document.getElementById('print').addEventListener('click', () => window.print());
   document.getElementById('cloudSave').addEventListener('click', cloudSave);
-  document.getElementById('cloudLoad').addEventListener('click', cloudLoad);
+  document.getElementById('cloudLoad').addEventListener('click', () => cloudLoad(false));
   document.getElementById('syncCal').addEventListener('click', syncToGoogleCalendar);
   document.getElementById('fetchHolidays').addEventListener('click', refetchHolidaysForce);
-  document.getElementById('gasUrl').addEventListener('change', (e) => localStorage.setItem(gasUrlKey(), e.target.value.trim()));
-  document.getElementById('gasToken').addEventListener('change', (e) => localStorage.setItem(gasTokenKey(), e.target.value.trim()));
+  document.getElementById('gasUrl').addEventListener('change', (e) => { localStorage.setItem(gasUrlKey(), e.target.value.trim()); syncReady = false; updateSyncUI('接続先を変更しました。① 最新の予定を読み込んでください。'); });
+  document.getElementById('gasToken').addEventListener('change', (e) => { localStorage.setItem(gasTokenKey(), e.target.value.trim()); syncReady = false; updateSyncUI('設定を変更しました。① 最新の予定を読み込んでください。'); });
+  window.addEventListener('beforeunload', e => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+  window.addEventListener('pageshow', e => { if (e.persisted && !syncBusy) cloudLoad(true); });
 }
 
 document.addEventListener('DOMContentLoaded', init);

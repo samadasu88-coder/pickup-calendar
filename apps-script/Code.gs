@@ -69,24 +69,32 @@ function handleRegister(body) {
 function handleSyncSave(body) {
   const ym = body.ym;
   if (!ym) return json({ ok: false, error: 'ym required' });
-  const props = PropertiesService.getScriptProperties();
-  props.setProperty('SYNC_' + ym, body.payload || '');
-  const now = new Date().toISOString();
-  props.setProperty('SYNC_UPDATED_' + ym, now);
-  return json({ ok: true, action: 'sync-save', ym, updated: now });
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const props = PropertiesService.getScriptProperties();
+    const updated = props.getProperty('SYNC_UPDATED_' + ym) || '';
+    if (typeof body.baseUpdated !== 'string') return json({ ok: false, error: 'reload required' });
+    if (body.baseUpdated !== updated) return json({ ok: false, error: 'conflict', updated });
+    const payload = JSON.parse(body.payload);
+    if (`${payload.year}-${String(payload.month).padStart(2, '0')}` !== ym || !Array.isArray(payload.days)) return json({ ok: false, error: 'invalid payload' });
+    const now = new Date(Math.max(Date.now(), Date.parse(updated || '1970-01-01') + 1)).toISOString();
+    props.setProperties({ ['SYNC_' + ym]: body.payload, ['SYNC_UPDATED_' + ym]: now });
+    return json({ ok: true, action: 'sync-save', ym, updated: now });
+  } finally { lock.releaseLock(); }
 }
 
 function handleSyncLoad(body) {
   const ym = body && body.ym;
   if (!ym) return json({ ok: false, error: 'ym required' });
-  const props = PropertiesService.getScriptProperties();
-  return json({
-    ok: true,
-    action: 'sync-load',
-    ym,
-    payload: props.getProperty('SYNC_' + ym) || '',
-    updated: props.getProperty('SYNC_UPDATED_' + ym) || ''
-  });
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const props = PropertiesService.getScriptProperties();
+    return json({ ok: true, syncProtocol: 1, action: 'sync-load', ym,
+      payload: props.getProperty('SYNC_' + ym) || '',
+      updated: props.getProperty('SYNC_UPDATED_' + ym) || '' });
+  } finally { lock.releaseLock(); }
 }
 
 function json(obj) {
